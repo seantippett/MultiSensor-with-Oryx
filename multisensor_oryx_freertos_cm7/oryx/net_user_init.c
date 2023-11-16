@@ -40,7 +40,7 @@
 #define APP_HOST_NAME "https-server-demo"
 #define APP_MAC_ADDR "00-AB-CD-11-76-00"
 
-#define APP_USE_DHCP_CLIENT ENABLED
+#define APP_USE_DHCP_CLIENT DISABLED
 #define APP_IPV4_HOST_ADDR "192.168.0.21"
 #define APP_IPV4_SUBNET_MASK "255.255.255.0"
 #define APP_IPV4_DEFAULT_GATEWAY "192.168.0.254"
@@ -273,6 +273,10 @@ void ksz9563InitHook(NetInterface *interface)
       KSZ9563_PORTn_XMII_CTRL0_DUPLEX |
       KSZ9563_PORTn_XMII_CTRL0_SPEED_10_100);
 #endif
+   //The ports are forced to 10/100 Mbit/s operation only
+   ksz9563WritePhyReg(interface, KSZ9563_PORT1, KSZ9563_GBCR, 0);
+   ksz9563WritePhyReg(interface, KSZ9563_PORT2, KSZ9563_GBCR, 0);
+
 }
 
 
