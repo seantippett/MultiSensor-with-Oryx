@@ -24,6 +24,7 @@
 
 #include "fsl_common.h"
 #include "fsl_component_serial_manager.h"
+#include "os_port_config.h" // oryx UART output support
 
 /*!
  * @addtogroup debugconsole
@@ -76,7 +77,8 @@ static inline int DbgConsole_Disabled(void)
 #define GETCHAR DbgConsole_Getchar
 #elif SDK_DEBUGCONSOLE == DEBUGCONSOLE_REDIRECT_TO_TOOLCHAIN /* Select printf, scanf, putchar, getchar of toolchain. \ \
                                                               */
-#define PRINTF  printf
+//#define PRINTF  printf
+#define PRINTF	TRACE_PRINTF // oryx UART output support
 #define SCANF   scanf
 #define PUTCHAR putchar
 #define GETCHAR getchar

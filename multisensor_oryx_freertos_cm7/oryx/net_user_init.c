@@ -625,5 +625,5 @@ void netUserInit(void)
 #endif
 
    //Start TLS 1.3 PSK server
-   tlsServerDemoInit();
+   //tlsServerDemoInit();
 }

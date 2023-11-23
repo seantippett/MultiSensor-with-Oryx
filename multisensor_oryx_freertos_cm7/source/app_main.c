@@ -580,7 +580,7 @@ static void main_thread(void *arg)
 	getUID();
 #endif
 
-	stack_init();
+	//stack_init();
 
 
 #if(0)
@@ -596,7 +596,7 @@ static void main_thread(void *arg)
 
 #if(1)
 
-#if(1)
+#if(0)
 	if (xTaskCreate(tcp_video_task, "tcp_video", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
 			pdPASS)
 	{
@@ -606,7 +606,7 @@ static void main_thread(void *arg)
 	}
 #endif
 
-#if(1)
+#if(0)
 
 	if (xTaskCreate(video_task, "video_task", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
 			pdPASS)
@@ -687,7 +687,7 @@ static void main_thread(void *arg)
 			;
 	}
 #endif
-#if(1)
+#if(0)
 	if (xTaskCreate(tcp_Jack_task, "tcp_Jack", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
 			pdPASS)
 	{
@@ -696,7 +696,7 @@ static void main_thread(void *arg)
 			;
 	}
 #endif
-#if(1)
+#if(0)
 //	when you turn this back on/off, you need to adjust wdog_networkActivity in the jack port.  this should be |= 1 when running, if not |= 3
 	if (xTaskCreate(tcp_logging_task, "tcp_logging", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
 			pdPASS)
@@ -726,7 +726,7 @@ static void main_thread(void *arg)
 	}
 
 #endif
-#if(1)
+#if(0)
 
 	if (xTaskCreate(app_board_task, "board", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
 			pdPASS)
@@ -736,6 +736,7 @@ static void main_thread(void *arg)
 			;
 	}
 #endif
+#if(0)
 	if (xTaskCreate(alarm_decision_task, "AlarmDecision", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
 			pdPASS)
 	{
@@ -743,6 +744,7 @@ static void main_thread(void *arg)
 		while (1)
 			;
 	}
+#endif
 
 #endif
 #if(0)
@@ -756,7 +758,7 @@ static void main_thread(void *arg)
 	}
 #endif
 
-#if(1)
+#if(0)
 		if (xTaskCreate(heartbeat_task, "heartbeat", 1024, NULL, DEFAULT_THREAD_PRIO, NULL) != pdPASS)
 		{
 			PRINTF("Heartbeat task creation failed!\r\n");
@@ -920,9 +922,10 @@ int main(void)
 
 	extern void netUserInit(void);
 	netUserInit();
-#else
-	WDOG_Start();
 
+	//WDOG_Start();
+
+#else
 	i2c_flush();
 
 	BOARD_InitPins_REV2();
@@ -937,10 +940,13 @@ int main(void)
 
 	BOARD_InitEnetPins();			// one of these 2 lines may not be necessary.
 	BOARD_InitEnet1GPins();			// one of these 2 lines may not be necessary.
-	BOARD_InitMicPins();
 
 	EnableIRQ(ENET_1G_MAC0_Tx_Rx_1_IRQn);
 	EnableIRQ(ENET_1G_MAC0_Tx_Rx_2_IRQn);
+#endif
+	BOARD_InitMicPins();
+
+
 
 	mdioHandle.resource.csrClock_Hz = EXAMPLE_CLOCK_FREQ;
 
@@ -1009,7 +1015,7 @@ int main(void)
     /* create server thread in RTOS */
     if (sys_thread_new("main", main_thread, NULL, HTTPD_STACKSIZE, HTTPD_PRIORITY) == NULL)
         LWIP_ASSERT("main(): Task creation failed.", 0);
-#endif
+
 
     /* run RTOS */
     vTaskStartScheduler();
