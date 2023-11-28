@@ -25,15 +25,9 @@
 //#include "McuWait.h"
 //#include "McuRTOS.h"
 
-/* lwIP */
-#include "lwip/opt.h"
-#include "lwip/netifapi.h"
-#include "lwip/tcpip.h"
-#include "netif/ethernet.h"
-#include "enet_ethernetif.h"
-#include "lwip/sys.h"
-#include "lwip/api.h"
-#include "lwip/timeouts.h"
+// ORYX
+#include "core/net.h"
+#include "debug.h"
 
 #include "board.h"
 #include "app_shared.h"
@@ -750,11 +744,12 @@ int activeTargetMarker[ACTIVE_TARGET_LIST_SIZE];
 #define MICROWAVE_TCP_SAMPLES_TO_SEND	387
 #define HEADER_SIZE 13
 uint8_t	microwave_sequence_num;
+#if(0)
 void tcp_microwave_task(void *pvParameters)
 {
 
 	struct netconn *conn, *newconn;
-	err_t err;
+	error_t err;
 //	uint32_t j;
 
 //	const TickType_t xMaxBlockTime = pdMS_TO_TICKS( 1000 );
@@ -795,7 +790,7 @@ void tcp_microwave_task(void *pvParameters)
 		err |= netconn_peer(newconn, &client_address, &client_port);
 		/* Process the new connection. */
 		vTaskDelay(50);
-		if (err == ERR_OK) {
+		if (err == NO_ERROR) {
 
 			do {
 				vTaskDelay(10 / portTICK_PERIOD_MS );
@@ -834,14 +829,14 @@ void tcp_microwave_task(void *pvParameters)
 				if(microwave_sequence_num > MAX_SEQ_NUM){
 					microwave_sequence_num = 0;
 				}
-				if(err == ERR_OK)
+				if(err == NO_ERROR)
 				{
 					sent_frames++;
 				}
 
 
 			}
-			while(err == ERR_OK);
+			while(err == NO_ERROR);
 			xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
 			PRINTF("Microwave task: Got EOF, looping. %u sent\r\n", sent_frames);
 			xSemaphoreGive( xPrintMutex );
@@ -862,7 +857,7 @@ void tcp_microwave_task(void *pvParameters)
 
 	}
 }
-
+#endif
 
 
 #define EVENT_COUNT 		(2)		// count

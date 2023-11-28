@@ -17,15 +17,7 @@
 //#include "McuWait.h"
 //#include "McuRTOS.h"
 
-/* lwIP */
-#include "lwip/opt.h"
-#include "lwip/netifapi.h"
-#include "lwip/tcpip.h"
-#include "netif/ethernet.h"
-#include "enet_ethernetif.h"
-#include "lwip/sys.h"
-#include "lwip/api.h"
-#include "lwip/timeouts.h"
+#include "core/net.h"
 
 #include "board.h"
 #include "app_microwave.h"

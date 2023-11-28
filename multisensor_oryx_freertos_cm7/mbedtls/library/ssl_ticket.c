@@ -270,7 +270,7 @@ int mbedtls_ssl_ticket_write( void *p_ticket,
 cleanup:
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &ctx->mutex ) != 0 )
-        return( MBEDTLS_ERR_THREADING_MUTEX_ERROR );
+        return( MBEDTLS_error_tHREADING_MUTEX_ERROR );
 #endif
 
     return( ret );
@@ -381,7 +381,7 @@ int mbedtls_ssl_ticket_parse( void *p_ticket,
 cleanup:
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &ctx->mutex ) != 0 )
-        return( MBEDTLS_ERR_THREADING_MUTEX_ERROR );
+        return( MBEDTLS_error_tHREADING_MUTEX_ERROR );
 #endif
 
     return( ret );

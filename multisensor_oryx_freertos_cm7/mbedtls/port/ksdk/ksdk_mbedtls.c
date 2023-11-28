@@ -3746,7 +3746,7 @@ cleanup:
 #if defined(MBEDTLS_THREADING_C)
     if (mbedtls_mutex_unlock(&ctx->mutex) != 0)
     {
-        return (MBEDTLS_ERR_THREADING_MUTEX_ERROR);
+        return (MBEDTLS_error_tHREADING_MUTEX_ERROR);
     }
 #endif
 
@@ -4964,12 +4964,12 @@ void mcux_mbedtls_mutex_free(mbedtls_threading_mutex_t *mutex)
 /**
  * @brief Implementation of mbedtls_mutex_lock for thread-safety.
  *
- * @return 0 if successful, MBEDTLS_ERR_THREADING_MUTEX_ERROR if timeout,
- * MBEDTLS_ERR_THREADING_BAD_INPUT_DATA if the mutex is not valid.
+ * @return 0 if successful, MBEDTLS_error_tHREADING_MUTEX_ERROR if timeout,
+ * MBEDTLS_error_tHREADING_BAD_INPUT_DATA if the mutex is not valid.
  */
 int mcux_mbedtls_mutex_lock(mbedtls_threading_mutex_t *mutex)
 {
-    int ret = MBEDTLS_ERR_THREADING_BAD_INPUT_DATA;
+    int ret = MBEDTLS_error_tHREADING_BAD_INPUT_DATA;
 
     if (mutex->is_valid == 1)
     {
@@ -4979,7 +4979,7 @@ int mcux_mbedtls_mutex_lock(mbedtls_threading_mutex_t *mutex)
         }
         else
         {
-            ret = MBEDTLS_ERR_THREADING_MUTEX_ERROR;
+            ret = MBEDTLS_error_tHREADING_MUTEX_ERROR;
         }
     }
 
@@ -4989,12 +4989,12 @@ int mcux_mbedtls_mutex_lock(mbedtls_threading_mutex_t *mutex)
 /**
  * @brief Implementation of mbedtls_mutex_unlock for thread-safety.
  *
- * @return 0 if successful, MBEDTLS_ERR_THREADING_MUTEX_ERROR if timeout,
- * MBEDTLS_ERR_THREADING_BAD_INPUT_DATA if the mutex is not valid.
+ * @return 0 if successful, MBEDTLS_error_tHREADING_MUTEX_ERROR if timeout,
+ * MBEDTLS_error_tHREADING_BAD_INPUT_DATA if the mutex is not valid.
  */
 int mcux_mbedtls_mutex_unlock(mbedtls_threading_mutex_t *mutex)
 {
-    int ret = MBEDTLS_ERR_THREADING_BAD_INPUT_DATA;
+    int ret = MBEDTLS_error_tHREADING_BAD_INPUT_DATA;
 
     if (mutex->is_valid == 1)
     {
@@ -5004,7 +5004,7 @@ int mcux_mbedtls_mutex_unlock(mbedtls_threading_mutex_t *mutex)
         }
         else
         {
-            ret = MBEDTLS_ERR_THREADING_MUTEX_ERROR;
+            ret = MBEDTLS_error_tHREADING_MUTEX_ERROR;
         }
     }
 

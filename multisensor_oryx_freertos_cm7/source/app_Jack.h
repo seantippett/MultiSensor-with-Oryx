@@ -605,7 +605,7 @@ extern uint32_t radarConfidenceForLogging;
 extern uint16_t pirDataForJack[2];
 extern uint32_t pirConfidenceForJack;
 extern uint32_t pirConfidenceForLogging;
-void tcp_Jack_task(void *pvParameters);
+void jackServerTask(void *pvParameters);
 
 
 

@@ -766,7 +766,7 @@ int mbedtls_rsa_public( mbedtls_rsa_context *ctx,
 cleanup:
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &ctx->mutex ) != 0 )
-        return( MBEDTLS_ERR_THREADING_MUTEX_ERROR );
+        return( MBEDTLS_error_tHREADING_MUTEX_ERROR );
 #endif
 
     mbedtls_mpi_free( &T );
@@ -1064,7 +1064,7 @@ int mbedtls_rsa_private( mbedtls_rsa_context *ctx,
 cleanup:
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &ctx->mutex ) != 0 )
-        return( MBEDTLS_ERR_THREADING_MUTEX_ERROR );
+        return( MBEDTLS_error_tHREADING_MUTEX_ERROR );
 #endif
 
     mbedtls_mpi_free( &P1 );

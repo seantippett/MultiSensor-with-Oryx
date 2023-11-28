@@ -17,17 +17,8 @@
 #include "app_storage.h"
 
 
-/* lwIP */
-#include "lwip/opt.h"
-#include "lwip/netifapi.h"
-#include "lwip/tcpip.h"
-#include "netif/ethernet.h"
-#include "enet_ethernetif.h"
-#include "lwip/sys.h"
-#include "lwip/api.h"
-#include "lwip/timeouts.h"
-#include "lwip/tcp.h"
-#include "lwip/sockets.h"
+// ORYX
+#include "core/net.h"
 
 #include "board.h"
 #include "app_microwave.h"
@@ -469,7 +460,7 @@ void app_storage_task(void *pvParameters)
 {
 
 
-	ssize_t err = ERR_OK;
+	ssize_t err = NO_ERROR;
 	uint32_t pageIndex, byteIndex, index, isBackup;
 	uint16_t csum16;
 	struct logEntry newEntry;

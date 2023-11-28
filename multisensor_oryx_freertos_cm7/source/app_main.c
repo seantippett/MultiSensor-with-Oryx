@@ -11,7 +11,7 @@
  * Includes
  ******************************************************************************/
 
-#include "lwip/opt.h"
+
 
 
 #include <stdio.h>
@@ -20,7 +20,7 @@
 #include <ctype.h>
 #include <string.h>
 
-#include "enet_ethernetif.h"
+
 #include "pin_mux.h"
 #include "board.h"
 #include "fsl_phy.h"
@@ -28,18 +28,10 @@
 #include "fsl_wdog.h"
 #include "fsl_common.h"
 
-#include "lwip/netif.h"
-#include "lwip/sys.h"
-#include "lwip/arch.h"
-#include "lwip/api.h"
-#include "lwip/tcpip.h"
-#include "lwip/ip.h"
-#include "lwip/netifapi.h"
-#include "lwip/sockets.h"
-#include "netif/etharp.h"
+#include "FreeRTOS.h"
 
-#include "httpsrv.h"
-#include "lwip/apps/mdns.h"
+#include "core/net.h"
+
 
 
 #include "fsl_phyksz8081.h"
@@ -97,8 +89,7 @@
 #define EXAMPLE_PHY_ADDRESS BOARD_ENET1_PHY_ADDRESS
 /* PHY operations. */
 #define EXAMPLE_PHY_OPS phyksz8081_ops
-/* ENET instance select. */
-#define EXAMPLE_NETIF_INIT_FN ethernetif1_init
+
 
 
 
@@ -109,19 +100,9 @@
 #define EXAMPLE_CLOCK_FREQ CLOCK_GetRootClockFreq(kCLOCK_Root_Bus)
 
 
-#ifndef EXAMPLE_NETIF_INIT_FN
-/*! @brief Network interface initialization function. */
-#define EXAMPLE_NETIF_INIT_FN ethernetif0_init
-#endif /* EXAMPLE_NETIF_INIT_FN */
 
 #ifndef HTTPD_DEBUG
 #define HTTPD_DEBUG LWIP_DBG_ON
-#endif
-#ifndef HTTPD_STACKSIZE
-#define HTTPD_STACKSIZE DEFAULT_THREAD_STACKSIZE
-#endif
-#ifndef HTTPD_PRIORITY
-#define HTTPD_PRIORITY DEFAULT_THREAD_PRIO
 #endif
 #ifndef DEBUG_WS
 #define DEBUG_WS 0
@@ -184,7 +165,7 @@ struct sys_stat_s sys_stats;
 static mdio_handle_t mdioHandle = {.ops = &EXAMPLE_MDIO_OPS};
 static phy_handle_t phyHandle   = {.phyAddr = EXAMPLE_PHY_ADDRESS, .mdioHandle = &mdioHandle, .ops = &EXAMPLE_PHY_OPS};
 
-static struct netif netif;
+//static struct netif netif;
 
 /*******************************************************************************
  * Code
@@ -268,115 +249,11 @@ void getHHMMSS(uint8_t *hh, uint8_t *mm, uint8_t *ss){
 
 
 
-#if HTTPSRV_CFG_WEBSOCKET_ENABLED
 /*
  * Echo plugin code - simple plugin which echoes any message it receives back to
  * client.
  */
-uint32_t ws_echo_connect(void *param, WS_USER_CONTEXT_STRUCT context)
-{
-#if DEBUG_WS
-	PRINTF("WebSocket echo client connected.\r\n");
-#endif
-	return (0);
-}
 
-uint32_t ws_echo_disconnect(void *param, WS_USER_CONTEXT_STRUCT context)
-{
-#if DEBUG_WS
-	PRINTF("WebSocket echo client disconnected.\r\n");
-#endif
-	return (0);
-}
-
-uint32_t ws_echo_message(void *param, WS_USER_CONTEXT_STRUCT context)
-{
-	WS_send(&context); /* Send back what was received.*/
-#if DEBUG_WS
-	if (context.data.type == WS_DATA_TEXT)
-	{
-		/* Print received text message to console. */
-		context.data.data_ptr[context.data.length] = 0;
-		PRINTF("WebSocket message received:\r\n%s\r\n", context.data.data_ptr);
-	}
-	else
-	{
-		/* Inform user about binary message. */
-		PRINTF("WebSocket binary data with length of %d bytes received.", context.data.length);
-	}
-#endif
-
-	return (0);
-}
-
-uint32_t ws_echo_error(void *param, WS_USER_CONTEXT_STRUCT context)
-{
-#if DEBUG_WS
-	PRINTF("WebSocket error: 0x%X.\r\n", context.error);
-#endif
-	return (0);
-}
-
-WS_PLUGIN_STRUCT ws_tbl[] = {{"/echo", ws_echo_connect, ws_echo_message, ws_echo_error, ws_echo_disconnect, NULL},
-		{0, 0, 0, 0, 0, 0}};
-#endif /* HTTPSRV_CFG_WEBSOCKET_ENABLED */
-
-
-/*!
- * @brief Initializes lwIP stack.
- */
-static void stack_init(void)
-{
-
-	ip4_addr_t netif_ipaddr, netif_netmask, netif_gw;
-	ethernetif_config_t enet_config = {
-			.phyHandle  = &phyHandle,
-			.macAddress = {DEFAULT_NW_MACADDR0, DEFAULT_NW_MACADDR1, DEFAULT_NW_MACADDR2, DEFAULT_NW_MACADDR3, DEFAULT_NW_MACADDR4, DEFAULT_NW_MACADDR5}, //configMAC_ADDR,
-	};
-
-	mdioHandle.resource.csrClock_Hz = EXAMPLE_CLOCK_FREQ;
-
-	tcpip_init(NULL, NULL);
-	if(defaultConfigFlag){
-		enet_config.macAddress[5] += node_num;
-		IP4_ADDR(&netif_ipaddr, DEFAULT_NW_IPADDR0, DEFAULT_NW_IPADDR1, DEFAULT_NW_IPADDR2, (DEFAULT_NW_IPADDR3));
-		IP4_ADDR(&netif_netmask, DEFAULT_NW_SUBNETMASK0, DEFAULT_NW_SUBNETMASK1, DEFAULT_NW_SUBNETMASK2, DEFAULT_NW_SUBNETMASK3);
-		IP4_ADDR(&netif_gw, DEFAULT_NW_GATEWAYADDR0, DEFAULT_NW_GATEWAYADDR1, DEFAULT_NW_GATEWAYADDR2, DEFAULT_NW_GATEWAYADDR3);
-	}else{
-		memcpy(	enet_config.macAddress, configParam.MACAddr, sizeof(enet_config.macAddress));
-		IP4_ADDR(&netif_ipaddr, configParam.ipAddress[0], configParam.ipAddress[1], configParam.ipAddress[2], configParam.ipAddress[3]);
-		IP4_ADDR(&netif_netmask, configParam.snMask[0], configParam.snMask[1], configParam.snMask[2], configParam.snMask[3]);
-		IP4_ADDR(&netif_gw, configParam.gwAddress[0], configParam.gwAddress[1], configParam.gwAddress[2], configParam.gwAddress[3]);
-	}
-
-
-	netifapi_netif_add(&netif, &netif_ipaddr, &netif_netmask, &netif_gw, &enet_config, EXAMPLE_NETIF_INIT_FN,
-			tcpip_input);
-	netifapi_netif_set_default(&netif);
-	netifapi_netif_set_up(&netif);
-
-	//    LOCK_TCPIP_CORE();
-	//    mdns_resp_init();
-	//    mdns_resp_add_netif(&netif, MDNS_HOSTNAME);
-	//    mdns_resp_add_service(&netif, MDNS_HOSTNAME, "_http", DNSSD_PROTO_TCP, 80, http_srv_txt, NULL);
-	//    UNLOCK_TCPIP_CORE();
-
-	xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
-	LWIP_PLATFORM_DIAG(("\r\n************************************************"));
-	LWIP_PLATFORM_DIAG((" Node %u netconfig\r\n", node_num));
-	LWIP_PLATFORM_DIAG(("************************************************"));
-	LWIP_PLATFORM_DIAG((" IPv4 Address     : %u.%u.%u.%u", ((u8_t *)&netif_ipaddr)[0], ((u8_t *)&netif_ipaddr)[1],
-			((u8_t *)&netif_ipaddr)[2], ((u8_t *)&netif_ipaddr)[3]));
-	LWIP_PLATFORM_DIAG((" IPv4 Subnet mask : %u.%u.%u.%u", ((u8_t *)&netif_netmask)[0], ((u8_t *)&netif_netmask)[1],
-			((u8_t *)&netif_netmask)[2], ((u8_t *)&netif_netmask)[3]));
-	LWIP_PLATFORM_DIAG((" IPv4 Gateway     : %u.%u.%u.%u", ((u8_t *)&netif_gw)[0], ((u8_t *)&netif_gw)[1],
-			((u8_t *)&netif_gw)[2], ((u8_t *)&netif_gw)[3]));
-	LWIP_PLATFORM_DIAG((" mDNS hostname    : %s", MDNS_HOSTNAME));
-	LWIP_PLATFORM_DIAG(("************************************************"));
-	xSemaphoreGive( xPrintMutex );
-
-
-}
 
 void stats_task(void *pvParameters){
 	while(1){
@@ -553,10 +430,9 @@ void heartbeat_task(void *pvParameters){
 
 static void main_thread(void *arg)
 {
-	LWIP_UNUSED_ARG(arg);		// avoids compiler warnings.
 
 #if(0)
-	if (xTaskCreate(app_config_task, "app_config", 2048, NULL, DEFAULT_THREAD_PRIO, NULL) != pdPASS)
+	if (xTaskCreate(app_config_task, "app_config", 2048, NULL, OS_TASK_PRIORITY_NORMAL, NULL) != pdPASS)
 	{
 		PRINTF("Config task creation failed!\r\n");
 		while (1)
@@ -585,7 +461,7 @@ static void main_thread(void *arg)
 
 #if(0)
 #if IS_BOOTLOADER_BUILD_CONFIG
-	if (xTaskCreate(httpsclient_task, "httpsclient_task", 2048, NULL, DEFAULT_THREAD_PRIO, NULL) != pdPASS)
+	if (xTaskCreate(httpsclient_task, "httpsclient_task", 2048, NULL, OS_TASK_PRIORITY_NORMAL, NULL) != pdPASS)
 	{
 		PRINTF("OTA task creation failed!\r\n");
 		while (1)
@@ -597,7 +473,7 @@ static void main_thread(void *arg)
 #if(1)
 
 #if(0)
-	if (xTaskCreate(tcp_video_task, "tcp_video", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(tcp_video_task, "tcp_video", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("Video TCPIP task creation failed!.\r\n");
@@ -608,7 +484,7 @@ static void main_thread(void *arg)
 
 #if(0)
 
-	if (xTaskCreate(video_task, "video_task", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(video_task, "video_task", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("video task creation failed!.\r\n");
@@ -618,7 +494,7 @@ static void main_thread(void *arg)
 #endif
 #if(0)
 	// Doesn't work.  I don't know why.  Haven't even looked in to it though.  Might be on PC side.  Don't know.  T.S.
-	if (xTaskCreate(udp_sync_task, "udp_sync", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(udp_sync_task, "udp_sync", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("Task creation failed!.\r\n");
@@ -626,7 +502,7 @@ static void main_thread(void *arg)
 	}
 #endif
 #if(0)
-	if (xTaskCreate(tcp_audio_task, "tcp_audio", (DEFAULT_THREAD_STACK_SIZE), NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(tcp_audio_task, "tcp_audio", (DEFAULT_THREAD_STACK_SIZE), NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("Task creation failed!.\r\n");
@@ -634,7 +510,7 @@ static void main_thread(void *arg)
 	}
 #endif
 #if(0)
-	if (xTaskCreate(tcp_accel_task, "tcp_accel", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(tcp_accel_task, "tcp_accel", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("Task creation failed!.\r\n");
@@ -643,7 +519,7 @@ static void main_thread(void *arg)
 	}
 #endif
 #if(1)
-	if (xTaskCreate(accel_polling_task, "accel_polling", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(accel_polling_task, "accel_polling", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("Accelerometer polling task creation failed!.\r\n");
@@ -652,7 +528,7 @@ static void main_thread(void *arg)
 	}
 #endif
 #if(1)
-	if (xTaskCreate(microwave_polling_task, "microwave_polling", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(microwave_polling_task, "microwave_polling", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("Microwave polling task creation failed!.\r\n");
@@ -661,7 +537,7 @@ static void main_thread(void *arg)
 	}
 #endif
 #if(0)
-	if (xTaskCreate(tcp_microwave_task, "tcp_microwave", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(tcp_microwave_task, "tcp_microwave", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{		// I haven't really tested this task much... it comes across in a format that I don't support yet... so, it is what it is.  T.S.
 		PRINTF("Microwave TCPIP task creation failed!.\r\n");
@@ -670,7 +546,7 @@ static void main_thread(void *arg)
 	}
 #endif
 #if(1)
-	if (xTaskCreate(ADC_polling_task, "ADC_polling", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(ADC_polling_task, "ADC_polling", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("ADC polling task creation failed!.\r\n");
@@ -679,7 +555,7 @@ static void main_thread(void *arg)
 	}
 #endif
 #if(0)
-	if (xTaskCreate(tcp_ADC_task, "tcp_ADC", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(tcp_ADC_task, "tcp_ADC", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("ADC TCPIP task creation failed!.\r\n");
@@ -687,8 +563,8 @@ static void main_thread(void *arg)
 			;
 	}
 #endif
-#if(0)
-	if (xTaskCreate(tcp_Jack_task, "tcp_Jack", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+#if(1)
+	if (xTaskCreate(jackServerTask, "Jack Server", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("Jack TCPIP task creation failed!.\r\n");
@@ -698,14 +574,14 @@ static void main_thread(void *arg)
 #endif
 #if(0)
 //	when you turn this back on/off, you need to adjust wdog_networkActivity in the jack port.  this should be |= 1 when running, if not |= 3
-	if (xTaskCreate(tcp_logging_task, "tcp_logging", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(tcp_logging_task, "tcp_logging", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("logging TCPIP task creation failed!.\r\n");
 		while (1)
 			;
 	}
-	if (xTaskCreate(logging_task, "logging", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(logging_task, "logging", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("logging task creation failed!.\r\n");
@@ -717,7 +593,7 @@ static void main_thread(void *arg)
 #endif
 
 #if(0)
-	if (xTaskCreate(power_task, "power_task", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(power_task, "power_task", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("logging TCPIP task creation failed!.\r\n");
@@ -728,7 +604,7 @@ static void main_thread(void *arg)
 #endif
 #if(0)
 
-	if (xTaskCreate(app_board_task, "board", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(app_board_task, "board", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("board task creation failed!.\r\n");
@@ -737,7 +613,7 @@ static void main_thread(void *arg)
 	}
 #endif
 #if(0)
-	if (xTaskCreate(alarm_decision_task, "AlarmDecision", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(alarm_decision_task, "AlarmDecision", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("alarm Decision task creation failed!.\r\n");
@@ -749,7 +625,7 @@ static void main_thread(void *arg)
 #endif
 #if(0)
 
-	if (xTaskCreate(app_storage_task, "Storage", DEFAULT_THREAD_STACK_SIZE, NULL, DEFAULT_THREAD_PRIO, NULL) !=
+	if (xTaskCreate(app_storage_task, "Storage", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
 			pdPASS)
 	{
 		PRINTF("storage task creation failed!.\r\n");
@@ -759,7 +635,7 @@ static void main_thread(void *arg)
 #endif
 
 #if(0)
-		if (xTaskCreate(heartbeat_task, "heartbeat", 1024, NULL, DEFAULT_THREAD_PRIO, NULL) != pdPASS)
+		if (xTaskCreate(heartbeat_task, "heartbeat", 1024, NULL, OS_TASK_PRIORITY_NORMAL, NULL) != pdPASS)
 		{
 			PRINTF("Heartbeat task creation failed!\r\n");
 			while (1)
@@ -767,7 +643,7 @@ static void main_thread(void *arg)
 		}
 #endif
 #if(0)
-		if (xTaskCreate(stats_task, "stats", 1024, NULL, DEFAULT_THREAD_PRIO, NULL) != pdPASS)
+		if (xTaskCreate(stats_task, "stats", 1024, NULL, OS_TASK_PRIORITY_NORMAL, NULL) != pdPASS)
 		{
 			PRINTF("Stat task creation failed!\r\n");
 			while (1)
@@ -1013,8 +889,15 @@ int main(void)
 	PIT_StartTimer(PIT_BASEADDR, PIT_CHANNEL);
 
     /* create server thread in RTOS */
-    if (sys_thread_new("main", main_thread, NULL, HTTPD_STACKSIZE, HTTPD_PRIORITY) == NULL)
-        LWIP_ASSERT("main(): Task creation failed.", 0);
+	if (xTaskCreate(main_thread, "main", DEFAULT_THREAD_STACK_SIZE, NULL, OS_TASK_PRIORITY_NORMAL, NULL) !=
+			pdPASS)
+	{
+		PRINTF("Main task creation failed!.\r\n");
+		while (1)
+			;
+	}
+   // if (sys_thread_new("main", main_thread, NULL, DEFAULT_THREAD_STACK_SIZE, OS_TASK_PRIORITY_NORMAL) == NULL)
+    //    LWIP_ASSERT("main(): Task creation failed.", 0);
 
 
     /* run RTOS */

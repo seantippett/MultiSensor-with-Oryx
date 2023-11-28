@@ -23,17 +23,17 @@
 //#include "McuWait.h"
 //#include "McuRTOS.h"
 
-/* lwIP */
-#include "lwip/opt.h"
-#include "lwip/netifapi.h"
-#include "lwip/tcpip.h"
-#include "netif/ethernet.h"
-#include "enet_ethernetif.h"
-#include "lwip/sys.h"
-#include "lwip/api.h"
-#include "lwip/timeouts.h"
-#include "lwip/tcp.h"
-#include "lwip/sockets.h"
+
+
+//Oryx
+#include "core/net.h"
+#include "tls.h"
+#include "tls_cipher_suites.h"
+#include "tls_ticket.h"
+#include "tls_misc.h"
+#include "rng/yarrow.h"
+#include "resource_manager.h"
+#include "debug.h"
 
 #include "board.h"
 #include "app_microwave.h"
@@ -54,6 +54,54 @@
 
 #define JACK_BUFFER_SIZE	(1460 * 6)
 #define PORT                        10013
+
+//Application configuration
+#define APP_SERVER_PORT 10013
+#define APP_SERVER_MAX_CONNECTIONS 1
+#define APP_SERVER_TIMEOUT 15000
+#define JACK_TLS	0
+#define APP_SERVER_CERT "certs/server_cert.pem"
+#define APP_SERVER_KEY "certs/server_key.pem"
+#define APP_CA_CERT "certs/ca_cert.pem"
+
+//Client's PSK identity
+#define APP_CLIENT1_PSK_IDENTITY "Client1"
+#define APP_CLIENT2_PSK_IDENTITY "Client2"
+
+//Client's PSK
+static const uint8_t client1Psk[] = {
+   0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+   0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+
+static const uint8_t client2Psk[] = {
+   0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+   0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef};
+
+//List of preferred ciphersuites
+static const uint16_t cipherSuites[] =
+{
+   TLS_CHACHA20_POLY1305_SHA256,
+   TLS_AES_128_GCM_SHA256
+};
+
+//Global variables
+static uint_t hitCounter = 0;
+
+static OsSemaphore connectionSemaphore;
+static TlsTicketContext tlsTicketContext;
+
+extern YarrowContext yarrowContext;
+
+//Forward declaration of functions
+void jackServerTask(void *param);
+void jackClientTask(void *param);
+
+static error_t tlsServerPskCallback(TlsContext *context, const uint8_t *pskIdentity,
+   size_t pskIdentityLen);
+
+static size_t dumpArray(char_t *buffer, const uint8_t *data, size_t length);
+
+
 
 uint16_t accelDataForJack;
 uint32_t accelConfidenceForJack = 0;
@@ -85,10 +133,12 @@ uint32_t active_streams = 0;
 
 int jackRXCount = 0;
 
-//static err_t err = ERR_OK;
+//static error_t err = NO_ERROR;
 
 //static struct netconn *jackConn;
-int listen_JackSock, jackSocketHandle;
+//int listen_JackSock, jackSocketHandle;
+Socket *listen_JackSock;
+Socket *jackSocketHandle;
 //static TaskHandle_t xJackServerTaskHandle = NULL;
 //static TaskHandle_t xJackStreamerTaskHandle = NULL;
 
@@ -129,7 +179,7 @@ extern enum enumPowerState powerState;
 //}
 static uint8_t newReset = 1; // used in device ID message to indicate new/unreported reset
 
-extern int writeMsg_withTimeout_socket(const int sock, uint8_t *dataptr, size_t size);
+extern int writeMsg_withTimeout_socket(Socket *sock, uint8_t *dataptr, size_t size);
 
 void ones_complement(uint8_t* inBuff, uint8_t* outBuff, uint32_t length){
 	for (int i = 0; i < length; i++){
@@ -189,8 +239,8 @@ uint32_t app_jack_get_alarm_status(void){
 
 
 // separate function to act as an interface, allowing us to change the implementation of how we send messages (i.e. switching to TLS)
-err_t jack_send(uint8_t* message, uint32_t length){
-	err_t err = ERR_OK;
+error_t jack_send(uint8_t* message, uint32_t length){
+	error_t err = NO_ERROR;
 	//err |= netconn_write(jackConn, (uint8_t *)&(message), length, NETCONN_NOCOPY);
 //	xSemaphoreTake( xJackConnectionMutex, ( TickType_t ) portMAX_DELAY );
 	err |= writeMsg_withTimeout_socket(jackSocketHandle, message, length);
@@ -213,9 +263,9 @@ void construct_jack_timeCritical_subheader(jack_timeCritical_subheader_t *subhea
 
 
 // ----- Senders for Stream-type Messages -----
-err_t jack_send_ucm_plot(uint64_t timestamp){
+error_t jack_send_ucm_plot(uint64_t timestamp){
 	jack_msg_app_ucm_plot_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 	uint32_t length;
 
 	// ---- collect plot data ----
@@ -291,9 +341,9 @@ void refreshDiagnosticFlags(void){
 
 
 
-err_t jack_send_ucm_diagnostic(uint32_t subtype){
+error_t jack_send_ucm_diagnostic(uint32_t subtype){
 	jack_msg_diag_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 	switch(subtype){
 		case JACK_DIAG_SUBTYPE_1:
 
@@ -346,10 +396,10 @@ err_t jack_send_ucm_diagnostic(uint32_t subtype){
 }
 
 // ----- Application Request Handlers -----
-err_t handle_app_null_req(jack_header_t *reqHeader, uint8_t* rcvBuf, uint64_t timestamp){
+error_t handle_app_null_req(jack_header_t *reqHeader, uint8_t* rcvBuf, uint64_t timestamp){
 	jack_msg_app_null_req_t request;
 	jack_msg_app_null_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 
 	// ---- organize request ----
 	request.header = *reqHeader;
@@ -369,10 +419,10 @@ err_t handle_app_null_req(jack_header_t *reqHeader, uint8_t* rcvBuf, uint64_t ti
 	return sendErr;
 }
 
-err_t handle_app_plot_req(jack_header_t *reqHeader, uint8_t* rcvBuf, uint64_t timestamp){
+error_t handle_app_plot_req(jack_header_t *reqHeader, uint8_t* rcvBuf, uint64_t timestamp){
 	jack_msg_app_plot_req_t request;
 	//jack_msg_app_plot_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 	uint8_t notify_streamer = 0;
 
 	// ---- organize request ----
@@ -412,10 +462,10 @@ err_t handle_app_plot_req(jack_header_t *reqHeader, uint8_t* rcvBuf, uint64_t ti
 	return sendErr;
 }
 
-err_t handle_app_alarm_req(jack_header_t *reqHeader, uint8_t* rcvBuf, uint64_t timestamp){
+error_t handle_app_alarm_req(jack_header_t *reqHeader, uint8_t* rcvBuf, uint64_t timestamp){
 	jack_msg_app_alarm_req_t request;
 	jack_msg_app_alarm_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 
 	// ---- organize request ----
 	request.header = *reqHeader;
@@ -445,10 +495,10 @@ err_t handle_app_alarm_req(jack_header_t *reqHeader, uint8_t* rcvBuf, uint64_t t
 }
 
 // ----- Common/Housekeeping Request Handlers -----
-err_t handle_null_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
+error_t handle_null_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 //	jack_msg_null_req_t request;
 	jack_msg_null_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 
 	// ---- organize request ----
 //	request.header = *reqHeader;
@@ -467,10 +517,10 @@ err_t handle_null_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	return sendErr;
 }
 
-err_t handle_deviceID_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
+error_t handle_deviceID_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 //	jack_msg_deviceID_req_t request;
 	jack_msg_deviceID_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 
 	// ---- organize request ----
 //	request.header = *reqHeader;
@@ -500,10 +550,10 @@ err_t handle_deviceID_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	return sendErr;
 }
 
-err_t handle_reboot_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
+error_t handle_reboot_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	jack_msg_reboot_req_t request;
 	jack_msg_reboot_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 
 	// ---- organize request ----
 	request.header = *reqHeader;
@@ -540,12 +590,12 @@ void readPageXIP(uint32_t addr, uint8_t *data);
 extern uint32_t makeBootloadHappen;
 
 __NOINIT(BOARD_SDRAM) uint8_t FW_SwapSpace[(FLASH_ADDR__IMAGE_1_END - FLASH_ADDR__IMAGE_1_START) + FLASH_PAGE_SIZE];
-err_t handle_FWupdate_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
+error_t handle_FWupdate_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	jack_msg_FWupdate_req_t *request = (jack_msg_FWupdate_req_t *)rcvBuf;
 	jack_msg_FWupdate_t message;
 	uint32_t replySize = 0;
 	uint32_t index, pageIndex, imageSize;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 	uint8_t reg;
 	uint8_t flashPage[FLASH_PAGE_SIZE];
 
@@ -635,10 +685,10 @@ extern void saveNewSettingsToFlash(config_param_t *newSettings);
 
 
 
-err_t handle_config_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
+error_t handle_config_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	jack_msg_config_req_t *requestPtr;
 	jack_msg_config_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 
 
 //	config_param_t newConfig;
@@ -657,7 +707,7 @@ err_t handle_config_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 		setLiveSettingsVideo(0, 0, 0); // disable use of live settings so new config will be used instead
 //		loadFlashSettings();		// doing this here seriously breaks stuff.  T.S 2023 08 28
 
-		return ERR_OK;
+		return NO_ERROR;
 	}
 	else if (requestPtr->setConfig == 2){
 		// live settings change, don't save to flash
@@ -665,14 +715,14 @@ err_t handle_config_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 
 		memcpy(&configParam, &requestPtr->configParamaters, sizeof(configParam));
 
-		return ERR_OK;
+		return NO_ERROR;
 	}
 	else if (requestPtr->setConfig == 3){
 		// ignore included config, reload config from flash, useful with live settings
 		__disable_irq();
 		loadFlashSettings();
 		__enable_irq();
-		return ERR_OK;
+		return NO_ERROR;
 	}
 	else if(requestPtr->setConfig == 0){
 		// reply with current config
@@ -687,14 +737,14 @@ err_t handle_config_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 		return sendErr;
 	}else{
 		PRINTF("Jack Server Task: Config Request Subtype Invalid\r\n");
-		return ERR_ARG;
+		return ERROR_INVALID_PARAMETER;
 	}
 }
 
-err_t handle_deviceHistory_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
+error_t handle_deviceHistory_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	jack_msg_devicehistory_req_t *requestPtr;
 	jack_msg_devicehistory_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 
 	// ---- organize request ----
 	requestPtr = (jack_msg_devicehistory_req_t *)rcvBuf;
@@ -764,10 +814,10 @@ err_t handle_deviceHistory_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 float getRoll(void);
 float getPitch(void);
 
-err_t handle_power_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
+error_t handle_power_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	jack_msg_power_req_t request;
 	jack_msg_power_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 
 	// ---- organize request ----
 	request.header = *reqHeader;
@@ -803,10 +853,10 @@ err_t handle_power_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	return sendErr;
 }
 
-err_t handle_diagnostics_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
+error_t handle_diagnostics_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	jack_msg_diag_req_t request;
 	jack_msg_diag_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 	//uint32_t cameraErr;
 
 
@@ -896,10 +946,10 @@ err_t handle_diagnostics_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	return sendErr;
 }
 
-err_t handle_livesettings_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
+error_t handle_livesettings_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 	jack_msg_livesettings_req_t *requestPtr;
 	jack_msg_livesettings_t message;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 
 
 	// ---- organize request ----
@@ -923,9 +973,9 @@ err_t handle_livesettings_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 
 }
 
-err_t process_message(uint8_t* rcvBuf){
+error_t process_message(uint8_t* rcvBuf){
 	jack_header_t rcvHeader;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 	uint64_t timestamp;
 
 	memcpy(&rcvHeader, rcvBuf, sizeof(rcvHeader));				// TODO: I'm not actually convinced we need a copy.
@@ -1031,7 +1081,7 @@ void jack_streamer_task(void *pvParameters){
 	// if a faster rate is required the function needs to be reworked for a smaller delay
 	uint32_t timeslice_100ms = 0;
 	uint64_t timestamp;
-	err_t sendErr = ERR_OK;
+	error_t sendErr = NO_ERROR;
 
 	do{
 		//xSemaphoreTake( xJackStreamStartStopMutex, ( TickType_t ) portMAX_DELAY ); use task notifications instead
@@ -1046,17 +1096,17 @@ void jack_streamer_task(void *pvParameters){
 			timeslice_100ms = 0;
 		}
 
-//		if (err != ERR_OK) {
+//		if (err != NO_ERROR) {
 //					PRINTF("Jack Streamer Task: error on send (err=%d)\r\n", err);
 //					continue;		// TODO handle this
 //				}
 //		else{
-//				err = ERR_OK;
+//				err = NO_ERROR;
 //			}
 		// ERR is a shared global variable that any mistakes on any port can cause this to change.  This is dumb.  We need to stop using it.
 
 		vTaskDelay(100); // 100ms
-	}while(sendErr == ERR_OK);
+	}while(sendErr == NO_ERROR);
 
 	vTaskDelete(NULL);
 
@@ -1067,7 +1117,7 @@ void jack_streamer_task(void *pvParameters){
 void jack_server_task(void *pvParameters){
 //	struct netbuf *net_buf;
 //	uint8_t buffer[1024];
-	err_t local_err = ERR_OK;
+	error_t local_err = NO_ERROR;
 	//uint32_t recvType;
 	//uint32_t STXfld, LENfld, VERfld;
 	//uint32_t data[((1024-JACK_HEADER_SIZE)/4)];
@@ -1107,28 +1157,28 @@ void jack_server_task(void *pvParameters){
 			vTaskDelay(50);
 		}
 		else{
-			local_err = ERR_OK;
+			local_err = NO_ERROR;
 			local_err |= process_message(RXBuffer);
 		}
 
-		if (local_err != ERR_OK) {
+		if (local_err != NO_ERROR) {
 			PRINTF("Jack Server Task: error on send (err=%d)\r\n", local_err);
 			continue;		// TODO handle this
 		}
 		else{
-			local_err = ERR_OK;
+			local_err = NO_ERROR;
 		}
 #endif
 	}
-	while(local_err == ERR_OK);
+	while(local_err == NO_ERROR);
 	vTaskDelete(NULL);
 }
 
 
 
-
+#if(0)
 // this task handles the connection to the client and spawns a jack server task when a connection is established
-void tcp_Jack_task(void *pvParameters)
+void tcp_Jack_task_old(void *pvParameters)
 {
 	TickType_t wakeTimer = 0, wakeTimerPrev = 0;
 
@@ -1139,7 +1189,7 @@ void tcp_Jack_task(void *pvParameters)
     char addr_str[128];
     int addr_family = (int)pvParameters;
     int jackRXCount = 0;
-    err_t local_err;
+    error_t local_err;
 	uint32_t timeslice_ms = 0;
 	struct sockaddr_storage dest_addr;
 //	uint64_t timestamp = 0;
@@ -1177,12 +1227,12 @@ void tcp_Jack_task(void *pvParameters)
 		}
 		opt = 1;
 		local_err = setsockopt(listen_JackSock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-		if(local_err != ERR_OK){PRINTF("JACK - socket set opt Fail\r\n");}
+		if(local_err != NO_ERROR){PRINTF("JACK - socket set opt Fail\r\n");}
 
 		// I'm not actually sure if we need linger turned on.  But it works.
 		const struct linger linger = {.l_onoff = 1, .l_linger = 5};
 		local_err = setsockopt(listen_JackSock, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger));
-		if(local_err != ERR_OK){PRINTF("socket set opt Fail\r\n");}
+		if(local_err != NO_ERROR){PRINTF("socket set opt Fail\r\n");}
 
 		xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
 		PRINTF("Jack Socket created!\r\n");
@@ -1270,14 +1320,6 @@ void tcp_Jack_task(void *pvParameters)
 
 
 
-#if(0)
-			if (xTaskCreate(jack_server_task, "jack_server_task", 2048, NULL, DEFAULT_THREAD_PRIO, &xJackServerTaskHandle) != pdPASS)
-			{
-				PRINTF("Task creation failed!\r\n");
-				while (1)
-					;
-			}
-#endif
 			do {
 //				vTaskDelay(75);
 				// streaming messages will go here and will be organized by timeslice
@@ -1384,7 +1426,7 @@ void tcp_Jack_task(void *pvParameters)
 
 
 
-				if (local_err != ERR_OK) {
+				if (local_err != NO_ERROR) {
 					PRINTF("Jack Server Task: error on Receive (err=%d)\r\n", local_err);
 //					continue;		// TODO handle this
 					break;	// handled!
@@ -1413,7 +1455,7 @@ void tcp_Jack_task(void *pvParameters)
 					 // 2Hz
 					if(diagnostic_change_flag){
 						local_err |= jack_send_ucm_diagnostic(JACK_DIAG_SUBTYPE_1);
-						if(local_err == ERR_OK){
+						if(local_err == NO_ERROR){
 							// clear the diagnostic change flag so we don't keep sending diag messages
 							diagnostic_change_flag = 0;
 						}
@@ -1431,19 +1473,19 @@ void tcp_Jack_task(void *pvParameters)
 				}
 // streaming code //
 
-				if (local_err != ERR_OK) {
+				if (local_err != NO_ERROR) {
 					PRINTF("Jack Server Task: error on Receive (err=%d)\r\n", local_err);
 //					continue;		// TODO handle this
 					break;	// handled!
 				}
 
-				if(local_err == ERR_OK){
+				if(local_err == NO_ERROR){
 					wdog_networkActivity |= 1;
 				}
 
 
 
-			}while(local_err == ERR_OK);
+			}while(local_err == NO_ERROR);
 
 	        shutdown(jackSocketHandle, SHUT_RDWR);		// Shutdown Read/Write.
 	        close(jackSocketHandle);
@@ -1455,5 +1497,565 @@ void tcp_Jack_task(void *pvParameters)
 		close(listen_JackSock);
 
 	}
+}
+#endif
+
+/**
+ * @brief // this task handles the connection to the client and spawns a jack client task when a connection is established
+ * @param param[in] Not used
+ **/
+
+void jackServerTask(void *param)
+{
+   error_t error;
+   uint_t counter;
+   uint16_t clientPort;
+   IpAddr clientIpAddr;
+   Socket *serverSocket;
+   Socket *clientSocket;
+   portBASE_TYPE status;
+   TaskHandle_t handle;
+
+   //Create a semaphore to limit the number of simultaneous connections
+   if(!osCreateSemaphore(&connectionSemaphore, APP_SERVER_MAX_CONNECTIONS))
+   {
+      //Debug message
+      TRACE_ERROR("Failed to create semaphore!\r\n");
+   }
+
+#if (APP_JACK_TLS && TLS_TICKET_SUPPORT == ENABLED)
+   //Initialize ticket encryption context
+   error = tlsInitTicketContext(&tlsTicketContext);
+   //Any error to report?
+   if(error)
+   {
+      //Debug message
+      TRACE_ERROR("Failed to bind socket!\r\n");
+   }
+#endif
+
+   //Open a socket
+   serverSocket = socketOpen(SOCKET_TYPE_STREAM, SOCKET_IP_PROTO_TCP);
+   //Failed to open socket?
+   if(!serverSocket)
+   {
+      //Debug message
+      TRACE_ERROR("Cannot open socket!\r\n");
+   }
+
+   //Bind newly created socket to port 443
+   error = socketBind(serverSocket, &IP_ADDR_ANY, APP_SERVER_PORT);
+   //Failed to bind socket to port 443?
+   if(error)
+   {
+      //Debug message
+      TRACE_ERROR("Failed to bind socket!\r\n");
+   }
+
+   //Place socket in listening state
+   error = socketListen(serverSocket, 1);
+   //Any failure to report?
+   if(error)
+   {
+      //Debug message
+      TRACE_ERROR("Failed to enter listening state!\r\n");
+   }
+
+   //Process incoming connections to the server
+   for(counter = 1; ; counter++)
+   {
+      //Debug message
+      TRACE_INFO("\r\n\r\n");
+      TRACE_INFO("Waiting for an incoming Jack connection...\r\n\r\n");
+
+      //Limit the number of simultaneous connections to the HTTP server
+      osWaitForSemaphore(&connectionSemaphore, INFINITE_DELAY);
+
+      //Accept an incoming connection
+      clientSocket = socketAccept(serverSocket, &clientIpAddr, &clientPort);
+
+      //Make sure the socket handle is valid
+      if(clientSocket != NULL)
+      {
+         //Debug message
+         TRACE_INFO("Jack Connection #%u established with client %s port %" PRIu16 "...\r\n",
+            counter, ipAddrToString(&clientIpAddr, NULL), clientPort);
+
+         //Create a task to service the client connection
+         status = xTaskCreate(jackClientTask, "Jack Client", 800, clientSocket,
+            tskIDLE_PRIORITY + 1, &handle);
+
+         //Did we encounter an error?
+         if(status != pdPASS)
+         {
+            //Debug message
+            TRACE_ERROR("Failed to create task!\r\n");
+
+            //Close socket
+            socketClose(clientSocket);
+            //Release semaphore
+            osReleaseSemaphore(&connectionSemaphore);
+         }
+      }
+   }
+}
+
+
+/**
+ * @brief Jack client task
+ * @param param[in] Client socket
+ **/
+
+void jackClientTask(void *param)
+{
+	error_t error;
+	error_t local_err;
+	size_t n;
+	Socket *clientSocket;
+	TlsContext *tlsContext;
+	char_t buffer[512];
+	TickType_t wakeTimer = 0, wakeTimerPrev = 0;
+	uint32_t rxBufferIndex = 0;
+	uint32_t timeslice_ms = 0;
+
+	//Variable initialization
+	tlsContext = NULL;
+
+	//Retrieve socket handle
+	clientSocket = (Socket *) param;
+
+	jackSocketHandle = clientSocket;
+	//Start of exception handling block
+	do
+	{
+		//Set timeout
+		error = socketSetTimeout(clientSocket, APP_SERVER_TIMEOUT);
+
+		// Set tcp keepalive option
+		int keepAlive = 1;	// 1= enable keep alive
+		int keepIdle = 5*1000;	// 5000 = send first keepalive probe after 5 seconds of idleness;
+		int keepInterval = 3*1000;// 3000 = send subsequent keepalive probels after 3 seconds.
+		int keepCount = 3; 	// 3 = timeout after 3 failed probes.;
+		local_err = socketEnableKeepAlive(clientSocket, keepAlive);
+		local_err = socketSetKeepAliveParams(clientSocket, keepIdle,
+				keepInterval, keepCount);
+
+
+		// enable send timeout.
+//		struct timeval sendTimeout, recvTimeout;
+//		sendTimeout.tv_sec = 2;
+//		sendTimeout.tv_usec = 0;		// 2s
+//		recvTimeout.tv_sec = 0;
+//		recvTimeout.tv_usec = 10000;	//0.01 S
+		//{
+		//  long    tv_sec;         /* seconds */
+		//  long    tv_usec;        /* and microseconds */
+		//};
+		//local_err = setsockopt(jackSocketHandle, SOL_SOCKET, SO_SNDTIMEO, &sendTimeout, sizeof(sendTimeout));	// enable send timeout.
+		//local_err = setsockopt(jackSocketHandle, SOL_SOCKET, SO_RCVTIMEO, &recvTimeout, sizeof(sendTimeout));	// enable rx timeout.
+
+		//Any error to report?
+		if(error)
+			break;
+#if APP_JACK_TLS
+		//TLS context initialization
+		tlsContext = tlsInit();
+		//Failed to initialize TLS context?
+		if(tlsContext == NULL)
+		{
+			//Report an error
+			error = ERROR_OUT_OF_MEMORY;
+			//Exit immediately
+			break;
+		}
+
+		//Select server operation mode
+		error = tlsSetConnectionEnd(tlsContext, TLS_CONNECTION_END_SERVER);
+		//Any error to report?
+		if(error)
+			break;
+
+		//Bind TLS to the relevant socket
+		error = tlsSetSocket(tlsContext, clientSocket);
+		//Any error to report?
+		if(error)
+			break;
+
+		//Set TX and RX buffer size
+		error = tlsSetBufferSize(tlsContext, 2048, 16384);
+		//Any error to report?
+		if(error)
+			break;
+
+		//Set the PRNG algorithm to be used
+		error = tlsSetPrng(tlsContext, YARROW_PRNG_ALGO, &yarrowContext);
+		//Any error to report?
+		if(error)
+			break;
+
+		//Set supported TLS version(s)
+		error = tlsSetVersion(tlsContext, TLS_VERSION_1_3, TLS_VERSION_1_3);
+		//Any error to report?
+		if(error)
+			break;
+
+		//Preferred cipher suite list
+		error = tlsSetCipherSuites(tlsContext, cipherSuites,
+				arraysize(cipherSuites));
+		//Any error to report?
+		if(error)
+			break;
+
+		//Register PSK callback function
+		error = tlsSetPskCallback(tlsContext, tlsServerPskCallback);
+		//Any error to report?
+		if(error)
+			break;
+
+#if (TLS_TICKET_SUPPORT == ENABLED)
+		//Enable session ticket mechanism
+		error = tlsEnableSessionTickets(tlsContext, TRUE);
+		//Any error to report?
+		if(error)
+			break;
+
+		//Enable session ticket mechanism
+		error = tlsSetTicketCallbacks(tlsContext, tlsEncryptTicket,
+				tlsDecryptTicket, &tlsTicketContext);
+		//Any error to report?
+		if(error)
+			break;
+#endif
+
+		//Establish a secure session
+		error = tlsConnect(tlsContext);
+		//TLS handshake failure?
+		if(error)
+			break;
+#endif
+
+		rxBufferIndex = 0;
+		jackRXCount = 0;
+		wdog_networkActivity |= 1;
+		wakeTimer = xTaskGetTickCount();
+
+		//Read HTTP request
+		while(1)
+		{
+
+
+
+
+
+
+			do {
+				//				vTaskDelay(75);
+				// streaming messages will go here and will be organized by timeslice
+
+				xSemaphoreTake( xJackConnectionMutex, ( TickType_t ) portMAX_DELAY );
+				if((rxBufferIndex < 0) || (rxBufferIndex > 1460)){
+					rxBufferIndex = 0;	// fault scenario.
+					jackRXCount = 0;
+				}
+				if((jackRXCount < 0) || (jackRXCount > 1460)){
+					rxBufferIndex = 0;	// fault scenario.
+					jackRXCount = 0;
+				}
+				//Read a complete line
+#if APP_JACK_TLS
+				error = tlsRead(tlsContext, buffer, sizeof(buffer) - 1, &n,
+						TLS_FLAG_BREAK_CRLF);
+#else
+				error = socketReceive(clientSocket, &(RXBuffer[rxBufferIndex]), sizeof(RXBuffer) - 1 - rxBufferIndex, &n,
+						0);
+#endif
+				jackRXCount += n;
+				//recv(jackSocketHandle, &(RXBuffer[rxBufferIndex]), sizeof(RXBuffer) - 1 - rxBufferIndex, 0);
+				xSemaphoreGive( xJackConnectionMutex);
+				if(jackRXCount < 0){
+					if(error == ERROR_NOT_CONNECTED){
+						local_err = -1;	// ENOTCONN means the other end has blown away the connection.  We need to reset.
+						xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
+						PRINTF("Jack port closed: errno %d\r\n", error);
+						xSemaphoreGive(xPrintMutex);
+					}
+					else if(error != ERROR_WOULD_BLOCK){		//EAGAIN could also be 'would block'
+					}
+				}
+
+
+				uint64_t timestamp;
+				int32_t msgLength;
+
+
+				while(jackRXCount > 0){
+
+					// check for alignment.
+					if(((jack_header_t * )(&(RXBuffer[rxBufferIndex])))->STX !=  STX_VAL){
+						// mis-aligned.
+						rxBufferIndex++;
+						if(rxBufferIndex >= (sizeof(RXBuffer) -1)){
+							jackRXCount = -1;	// fault condition.
+						}
+						jackRXCount--;
+						if(jackRXCount == 0){
+							rxBufferIndex = 0;
+						}
+						continue;
+					}
+
+					msgLength = (((jack_header_t * )(&(RXBuffer[rxBufferIndex])))->LEN +
+							sizeof(((jack_header_t * )(&(RXBuffer[rxBufferIndex])))->LEN) +
+							sizeof(((jack_header_t * )(&(RXBuffer[rxBufferIndex])))->STX)  );
+					// check that the Length byte is reasonable.
+					if((msgLength > ((JACK_BUFFER_SIZE) * 2 / 3)) || (msgLength < sizeof(((jack_header_t * )(&(RXBuffer[rxBufferIndex])))->LEN) + sizeof(((jack_header_t * )(&(RXBuffer[rxBufferIndex])))->STX)))
+					{
+						// Length byte is unreasonable.  This is an error.  Treat this as mis-alignment.
+						rxBufferIndex++;
+						if(rxBufferIndex >= (sizeof(RXBuffer) -1)){
+							jackRXCount = -1;	// fault condition.
+						}
+						jackRXCount--;
+						if(jackRXCount == 0){
+							rxBufferIndex = 0;
+						}
+						continue;
+					}
+					// check that the entire msg is in the RXBuffer.
+					if(msgLength > jackRXCount)
+					{
+						break;	// break loop so we can receive more bytes.
+					}
+
+					local_err = process_message(&(RXBuffer[rxBufferIndex]));
+
+					if((local_err < 0) || (msgLength > jackRXCount)){
+						jackRXCount = 0;
+						//						local_err = -1;
+						rxBufferIndex = 0;
+						continue;
+					}else if( msgLength > sizeof(RXBuffer) - 1 - rxBufferIndex){
+						// this is an error condition.  I.e. an error in the process_message function.  we received too many bytes.
+						jackRXCount = 0;
+						local_err = -1;
+						rxBufferIndex = 0;
+						continue;
+					}
+					if(msgLength == jackRXCount){
+						// we received all the bytes in the queue.  Reset the rxBufferIndex
+						jackRXCount = jackRXCount - msgLength;
+						local_err = 0;
+						rxBufferIndex = 0;
+
+					}else if(msgLength == 0){
+						// we didn't receive any bytes.  Likely because the whole msg isn't in the receive buffer.
+						// abort our loop and receive more bytes.
+						local_err = 0;
+						break;
+					}else{
+						// there's more bytes in the RXBuffer that need to be processed (complete additional msg or not).
+						jackRXCount = jackRXCount - msgLength;
+						local_err = 0;
+						rxBufferIndex += msgLength;
+
+					}
+				}
+
+
+
+				if (local_err != NO_ERROR) {
+					PRINTF("Jack Server Task: error on Receive (err=%d)\r\n", local_err);
+					//					continue;		// TODO handle this
+					break;	// handled!
+				}
+
+
+				if(jackRXCount == 0){
+					vTaskDelay(50);	// nothing to receive last time.
+				}
+
+
+				// streaming code //
+
+#define TIME_BETWEEN_MESSAGES_mS	250
+
+				wakeTimer = xTaskGetTickCount() / portTICK_PERIOD_MS;
+				if(wakeTimer > wakeTimerPrev){
+					timeslice_ms += wakeTimer - wakeTimerPrev;
+				}else{
+					timeslice_ms += (portMAX_DELAY - wakeTimerPrev) + wakeTimer;
+				}
+				wakeTimerPrev = wakeTimer;
+				if(timeslice_ms > TIME_BETWEEN_MESSAGES_mS)
+				{
+					timeslice_ms = timeslice_ms - TIME_BETWEEN_MESSAGES_mS;
+					// 2Hz
+					if(diagnostic_change_flag){
+						local_err |= jack_send_ucm_diagnostic(JACK_DIAG_SUBTYPE_1);
+						if(local_err == NO_ERROR){
+							// clear the diagnostic change flag so we don't keep sending diag messages
+							diagnostic_change_flag = 0;
+						}
+					}
+
+					if(active_streams & JACK_STREAM_PLOT_MASK){
+						timestamp = app_jack_get_timestamp(JACK_MSG_TYPE_APP_UCM_PLOT);
+						local_err |= jack_send_ucm_plot(timestamp);
+					}else{
+						timeslice_ms = 0;
+					}
+				}
+				if(timeslice_ms > TIME_BETWEEN_MESSAGES_mS){
+					timeslice_ms = TIME_BETWEEN_MESSAGES_mS;
+				}
+				// streaming code //
+
+				if (local_err != NO_ERROR) {
+					PRINTF("Jack Server Task: error on Receive (err=%d)\r\n", local_err);
+					//					continue;		// TODO handle this
+					break;	// handled!
+				}
+
+				if(local_err == NO_ERROR){
+					wdog_networkActivity |= 1;
+				}
+
+
+
+			}while(local_err == NO_ERROR);
+
+			//Any error to report?
+			if(error)
+				break;
+		}
+
+		//Propagate exception if necessary
+		if(error)
+			break;
+
+		//Send response to the client
+#if APP_JACK_TLS
+//		error = tlsWrite(tlsContext, buffer, n, NULL, 0);
+#else
+//		error = socketSend(clientSocket, buffer, n, NULL, 0);
+#endif
+		//Any error to report?
+//		if(error)
+//			break;
+#if APP_JACK_TLS
+		//Terminate TLS session
+		error = tlsShutdown(tlsContext);
+		//Any error to report?
+		if(error)
+			break;
+#endif
+		//Graceful shutdown
+//		error = socketShutdown(clientSocket, SOCKET_SD_BOTH);
+		//Any error to report?
+//		if(error)
+//			break;
+
+		//End of exception handling block
+	} while(0);
+
+#if APP_JACK_TLS
+	//Release TLS context
+	if(tlsContext != NULL)
+	{
+		tlsFree(tlsContext);
+	}
+#endif
+
+	//Close socket
+	if(clientSocket != NULL)
+	{
+		socketClose(clientSocket);
+	}
+
+	//Debug message
+	TRACE_INFO("Connection closed...\r\n");
+
+	//Release semaphore
+	osReleaseSemaphore(&connectionSemaphore);
+
+	//Kill ourselves
+	osDeleteTask(OS_SELF_TASK_ID);
+}
+
+
+/**
+ * @brief PSK callback function
+ * @param[in] context Pointer to the TLS context
+ * @param[in] pskIdentity PSK identity of the client
+ * @param[in] pskIdentityLen Length of the PSK identity, in bytes
+ * @return Error code
+ **/
+
+error_t tlsServerPskCallback(TlsContext *context, const uint8_t *pskIdentity,
+   size_t pskIdentityLen)
+{
+   error_t error;
+
+   //Debug message
+   TRACE_INFO("TLS Server: PSK callback\r\n");
+
+   //Check PSK identity
+   if(pskIdentityLen == strlen(APP_CLIENT1_PSK_IDENTITY) &&
+      !memcmp(pskIdentity, APP_CLIENT1_PSK_IDENTITY, pskIdentityLen))
+   {
+      //Set the pre-shared key to be used
+      error = tlsSetPsk(context, client1Psk, sizeof(client1Psk));
+   }
+   else if(pskIdentityLen == strlen(APP_CLIENT2_PSK_IDENTITY) &&
+      !memcmp(pskIdentity, APP_CLIENT2_PSK_IDENTITY, pskIdentityLen))
+   {
+      //Set the pre-shared key to be used
+      error = tlsSetPsk(context, client2Psk, sizeof(client2Psk));
+   }
+   else
+   {
+      //Unknown PSK identity
+      error = ERROR_UNKNOWN_IDENTITY;
+   }
+
+   //Return status code
+   return error;
+}
+
+
+/**
+ * @brief Display the contents of an array
+ * @param[out] buffer Output buffer where to format the resulting string
+ * @param[in] data Pointer to the data array
+ * @param[in] length Number of bytes in the array
+ * @return Length of the resulting string
+ **/
+
+size_t dumpArray(char_t *buffer, const uint8_t *data, size_t length)
+{
+   size_t i;
+   size_t n;
+
+   //Variable initialization
+   n = 0;
+
+   //Properly terminate the string
+   buffer[0] = '\0';
+
+   //Process input data
+   for(i = 0; i < length; i++)
+   {
+      //Beginning of a new line?
+      if(i != 0 && (i % 16) == 0)
+      {
+         n += sprintf(buffer + n, "\r\n        ");
+      }
+
+      //Display current data byte
+      n += sprintf(buffer + n, "%02" PRIX8 " ", data[i]);
+   }
+
+   //Return the length of the resulting string
+   return n;
 }
 

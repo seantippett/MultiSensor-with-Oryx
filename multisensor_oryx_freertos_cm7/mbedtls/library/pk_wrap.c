@@ -579,7 +579,7 @@ static int ecdsa_verify_wrap( void *ctx_arg, mbedtls_md_type_t md_alg,
                              &key_id );
     if( status != PSA_SUCCESS )
     {
-        ret = mbedtls_psa_err_translate_pk( status );
+        ret = mbedtls_psa_error_translate_pk( status );
         goto cleanup;
     }
 
@@ -1024,7 +1024,7 @@ static int pk_opaque_sign_wrap( void *ctx, mbedtls_md_type_t md_alg,
      * buggy anyway). */
     status = psa_get_key_attributes( *key, &attributes );
     if( status != PSA_SUCCESS )
-        return( mbedtls_psa_err_translate_pk( status ) );
+        return( mbedtls_psa_error_translate_pk( status ) );
     buf_len = MBEDTLS_ECDSA_MAX_SIG_LEN( psa_get_key_bits( &attributes ) );
     psa_reset_key_attributes( &attributes );
     if( buf_len > MBEDTLS_PK_SIGNATURE_MAX_SIZE )
@@ -1034,7 +1034,7 @@ static int pk_opaque_sign_wrap( void *ctx, mbedtls_md_type_t md_alg,
     status = psa_sign_hash( *key, alg, hash, hash_len,
                             sig, buf_len, sig_len );
     if( status != PSA_SUCCESS )
-        return( mbedtls_psa_err_translate_pk( status ) );
+        return( mbedtls_psa_error_translate_pk( status ) );
 
     /* transcode it to ASN.1 sequence */
     return( pk_ecdsa_sig_asn1_from_psa( sig, sig_len, buf_len ) );

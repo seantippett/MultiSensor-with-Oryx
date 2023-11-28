@@ -1663,7 +1663,7 @@ cleanup:
 
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &mbedtls_threading_readdir_mutex ) != 0 )
-        ret = MBEDTLS_ERR_THREADING_MUTEX_ERROR;
+        ret = MBEDTLS_error_tHREADING_MUTEX_ERROR;
 #endif /* MBEDTLS_THREADING_C */
 
 #endif /* _WIN32 */

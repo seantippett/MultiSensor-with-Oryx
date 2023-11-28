@@ -23,16 +23,6 @@
 //#include "McuWait.h"
 //#include "McuRTOS.h"
 
-/* lwIP */
-#include "lwip/opt.h"
-#include "lwip/netifapi.h"
-#include "lwip/tcpip.h"
-#include "netif/ethernet.h"
-#include "enet_ethernetif.h"
-#include "lwip/sys.h"
-#include "lwip/api.h"
-#include "lwip/timeouts.h"
-
 #include "app_accel.h"
 #include "MMA8451.h"
 #include "app_jack.h"
@@ -1057,12 +1047,12 @@ union U_MMA_sample_withPaddingByte{
 
 __BSS(BOARD_SDRAM) union U_MMA_sample_withPaddingByte dataCopy[ACCEL_TCP_SAMPLES_TO_SEND];
 
-
+#if(0)
 void tcp_accel_task(void *pvParameters)
 {
 
 	struct netconn *conn, *newconn;
-	err_t err;
+	error_t err;
 //	uint32_t ulNotificationValue;
 	uint32_t sampleCount,j;
 
@@ -1104,7 +1094,7 @@ void tcp_accel_task(void *pvParameters)
 		err |= netconn_peer(newconn, &client_address, &client_port);
 		/* Process the new connection. */
 		vTaskDelay(50);
-		if (err == ERR_OK) {
+		if (err == NO_ERROR) {
 
 			do {
 				vTaskDelay(50);	// wait for samples.  This needs to be less than the time to gather ACCEL_TCP_SAMPLES_TO_SEND number of samples.
@@ -1153,14 +1143,14 @@ void tcp_accel_task(void *pvParameters)
 				if(accel_sequence_num > MAX_SEQ_NUM){
 					accel_sequence_num = 0;
 				}
-				if(err == ERR_OK)
+				if(err == NO_ERROR)
 				{
 					sent_frames++;
 				}
 
 
 			}
-			while(err == ERR_OK);
+			while(err == NO_ERROR);
 			xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
 			PRINTF("Accelerometer task: Got EOF, looping. %u sent\r\n", sent_frames);
 			xSemaphoreGive( xPrintMutex );
@@ -1183,7 +1173,7 @@ void tcp_accel_task(void *pvParameters)
 
 	}
 }
-
+#endif
 #if(0)
 static void accel_polling_task(void *pvParameters){
 	int16_t xData           = 0;

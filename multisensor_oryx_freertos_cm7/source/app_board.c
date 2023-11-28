@@ -25,16 +25,6 @@
 //#include "McuWait.h"
 //#include "McuRTOS.h"
 
-/* lwIP */
-#include "lwip/opt.h"
-#include "lwip/netifapi.h"
-#include "lwip/tcpip.h"
-#include "netif/ethernet.h"
-#include "enet_ethernetif.h"
-#include "lwip/sys.h"
-#include "lwip/api.h"
-#include "lwip/timeouts.h"
-#include "lwip/sockets.h"
 
 #include "board.h"
 #include "app_microwave.h"
@@ -82,7 +72,7 @@ void getHHMMSS(uint8_t *hh, uint8_t *mm, uint8_t *ss);
 void app_board_task(void *pvParameters)
 {
 //	int32_t pir1data, pir2data;
-//	uint32_t pirError = ERR_OK;
+//	uint32_t pirError = NO_ERROR;
 	TickType_t wakeTimer;
 //	loadCurrentSettings();
 
@@ -175,13 +165,14 @@ void updateNodeEntries( struct STR_NODE_ADDR_DATA (*newEntries)[SIZE_OF_NODE_LIS
 	}
 }
 
+#if(0)
 //https://github.com/MichaelDipperstein/sockets/blob/master/echoserver_udp.c
 extern uint32_t uid[2];
 void app_board_task(void *pvParameters)
 {
 
 
-	ssize_t err = ERR_OK;
+	ssize_t err = NO_ERROR;
 	uint32_t i;
 //	ssize_t transmitCount;
 
@@ -368,7 +359,7 @@ void app_board_task(void *pvParameters)
 
 
 }
-
+#endif
 
 
 void nodeEntryMaintenance(void){

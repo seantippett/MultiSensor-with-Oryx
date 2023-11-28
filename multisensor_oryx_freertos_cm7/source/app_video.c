@@ -19,15 +19,8 @@
 //#include "McuWait.h"
 //#include "McuRTOS.h"
 
-/* lwIP */
-#include "lwip/opt.h"
-#include "lwip/netifapi.h"
-#include "lwip/tcpip.h"
-#include "netif/ethernet.h"
-#include "enet_ethernetif.h"
-#include "lwip/sys.h"
-#include "lwip/api.h"
-#include "lwip/timeouts.h"
+// ORYX
+#include "core/net.h"
 
 /* Video */
 #include "camera_support.h"
@@ -375,7 +368,7 @@ void video_task(void *pvParameters)
 //	uint8_t buffer[4];
 //	int exposureFlashThreshold = 0xC00000;
 //	int nightMode = 0;
-	err_t err;
+	error_t err;
 	int exposureValue = 0;
 	int exposureFilter = 55;
 	enum LIGHTING_STATE {lightingState_DAY = 0, lightingState_NIGHT = 1, lightingState_NIGHT_LIGHT = 2} lightingState, lightingStatePrevious;
@@ -470,7 +463,7 @@ void video_task(void *pvParameters)
 			CAMERA_RECEIVER_Start(&cameraReceiver);
 
 
-			err = ERR_OK;
+			err = NO_ERROR;
 			LED_ARRAY_STROBE_OFF;
 			LED_ARRAY_CHARGE_ON;
 			do {
@@ -630,7 +623,7 @@ void video_task(void *pvParameters)
 					}
 				}
 
-			}while(err == ERR_OK);
+			}while(err == NO_ERROR);
 
 
 	}while(1);
@@ -647,12 +640,12 @@ void video_task(void *pvParameters)
 
 
 
-
+#if(0)
 void tcp_video_task(void *pvParameters)
 {
 
 	struct netconn *conn, *newconn = NULL;
-	err_t err;
+	error_t err;
 	ip_addr_t client_address;
 	uint16_t client_port;
 
@@ -693,7 +686,7 @@ void tcp_video_task(void *pvParameters)
 	{
 		vTaskDelay(100 / portTICK_PERIOD_MS );
 		conn->flags |= NETCONN_FLAG_NON_BLOCKING;		// added this so that the accept command doesn't block.  T.S. 2023 08 30
-		err = ERR_OK;
+		err = NO_ERROR;
 		err = netconn_accept(conn, &newconn);
 		conn->flags &= ~(NETCONN_FLAG_NON_BLOCKING);		// Now I clear it because i'm not sure how netcon send commands behave with the non-blocking.
 
@@ -701,7 +694,7 @@ void tcp_video_task(void *pvParameters)
 			// we would have blocked.  thus we don't have a connection.
 			connectionEstablished = 0;
 		}
-		else if (err != ERR_OK) {
+		else if (err != NO_ERROR) {
 			//netconn_close(newconn);
 			//netconn_delete(newconn);
 			vTaskDelay(1000 / portTICK_PERIOD_MS );
@@ -730,7 +723,7 @@ void tcp_video_task(void *pvParameters)
 			connectionEstablished = 1;
 		}
 
-//		if (err != ERR_OK) {
+//		if (err != NO_ERROR) {
 //			netconn_close(newconn);
 //		//	netconn_delete(newconn);
 //		//	vTaskDelay(1000 / portTICK_PERIOD_MS );
@@ -806,7 +799,7 @@ void tcp_video_task(void *pvParameters)
 						vTaskDelay(5 / portTICK_PERIOD_MS );
 					}while(byteCounter < bytesToWrite);
 
-					if(err == ERR_OK){
+					if(err == NO_ERROR){
 						sent_frames++;
 					}
 				}
@@ -815,7 +808,7 @@ void tcp_video_task(void *pvParameters)
 				xSemaphoreGive( xJPEGVideoMutex );
 				vTaskDelay(10 / portTICK_PERIOD_MS );
 			}
-		}while(err == ERR_OK);
+		}while(err == NO_ERROR);
 		if(connectionEstablished){
 			xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
 			PRINTF("Video task: Got EOF, looping. %u sent\r\n", sent_frames);
@@ -830,7 +823,7 @@ void tcp_video_task(void *pvParameters)
 		}
 	}
 }
-
+#endif
 
 #define BINARIZE_THRESHOLD 	 			(configParam.reserved0f)		//0.03
 #define VARIANCE_THRESHOLD 	 			(configParam.reserved1f)		//1.2

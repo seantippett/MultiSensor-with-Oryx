@@ -168,7 +168,7 @@ int mbedtls_entropy_add_source( mbedtls_entropy_context *ctx,
 exit:
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &ctx->mutex ) != 0 )
-        return( MBEDTLS_ERR_THREADING_MUTEX_ERROR );
+        return( MBEDTLS_error_tHREADING_MUTEX_ERROR );
 #endif
 
     return( ret );
@@ -247,7 +247,7 @@ int mbedtls_entropy_update_manual( mbedtls_entropy_context *ctx,
 
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &ctx->mutex ) != 0 )
-        return( MBEDTLS_ERR_THREADING_MUTEX_ERROR );
+        return( MBEDTLS_error_tHREADING_MUTEX_ERROR );
 #endif
 
     return( ret );
@@ -319,7 +319,7 @@ int mbedtls_entropy_gather( mbedtls_entropy_context *ctx )
 
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &ctx->mutex ) != 0 )
-        return( MBEDTLS_ERR_THREADING_MUTEX_ERROR );
+        return( MBEDTLS_error_tHREADING_MUTEX_ERROR );
 #endif
 
     return( ret );
@@ -441,7 +441,7 @@ exit:
 
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &ctx->mutex ) != 0 )
-        return( MBEDTLS_ERR_THREADING_MUTEX_ERROR );
+        return( MBEDTLS_error_tHREADING_MUTEX_ERROR );
 #endif
 
     return( ret );

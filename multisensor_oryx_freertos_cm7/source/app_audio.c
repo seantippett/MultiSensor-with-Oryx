@@ -17,18 +17,10 @@
 #include "app_shared.h"
 //#include "app_shield.h"
 
+#include "core/net.h"
+
 //#include "McuWait.h"
 //#include "McuRTOS.h"
-
-/* lwIP */
-#include "lwip/opt.h"
-#include "lwip/netifapi.h"
-#include "lwip/tcpip.h"
-#include "netif/ethernet.h"
-#include "enet_ethernetif.h"
-#include "lwip/sys.h"
-#include "lwip/api.h"
-#include "lwip/timeouts.h"
 #include "peripherals.h"
 #include "app_logging.h"
 #include "app_config.h"
@@ -490,7 +482,7 @@ int audio_init(void){
 
 
 
-
+#if(0)
 void udp_sync_task(void *pvParameters){
 	struct netconn *conn;
 	struct netbuf *net_buf;
@@ -499,7 +491,7 @@ void udp_sync_task(void *pvParameters){
 	uint8_t intended_node_num, node_num_byte;
 	//int32_t current_aud_pll_numerator;
 	int32_t pllMfnAdjustVal;
-	err_t err;
+	error_t err;
 	LWIP_UNUSED_ARG(pvParameters);
 
 
@@ -520,7 +512,7 @@ void udp_sync_task(void *pvParameters){
 
 	while (1) {
 		err = netconn_recv(conn, &net_buf);
-		if (err == ERR_OK) {
+		if (err == NO_ERROR) {
 
 			// capture the # of samples collected and reset the counter right away
 			uint32_t frozen_samples_collected = samples_collected;
@@ -610,10 +602,10 @@ void udp_sync_task(void *pvParameters){
 	}
 
 }
+#endif
 
 
-
-
+#if(0)
 extern struct STR_AudioQueue audioQueue;
 void tcp_audio_task(void *pvParameters)
 {
@@ -622,7 +614,7 @@ void tcp_audio_task(void *pvParameters)
 	uint8_t *audioBufferPtr;
 	uint32_t audioSampleIndex;
 
-	err_t err = ERR_OK;
+	error_t err = NO_ERROR;
 	//status_t pdm_status;
 //	uint32_t ulNotificationValue;
 //	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(1000);//( 200 );
@@ -675,7 +667,7 @@ void tcp_audio_task(void *pvParameters)
 	//	PDM_Enable(PDM, true);
 	//	vTaskDelay(500);
 	//	PDM_TransferReceiveEDMA(PDM, &s_pdmRxHandle_0, &pdmXfer);
-		if (err == ERR_OK) {
+		if (err == NO_ERROR) {
 			do {
 
 				/* Wait to be notified that the transmission is complete.  Note
@@ -781,13 +773,13 @@ void tcp_audio_task(void *pvParameters)
 					audio_sequence_num = 0;
 				}
 
-				if(err == ERR_OK)
+				if(err == NO_ERROR)
 				{
 					sent_audio_frames++;
 				}
 
 
-				if (err != ERR_OK) {
+				if (err != NO_ERROR) {
 					xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
 					PRINTF("Audio task: netconn_write: error \"%s\"\r\n", lwip_strerr(err));
 					xSemaphoreGive( xPrintMutex );
@@ -795,7 +787,7 @@ void tcp_audio_task(void *pvParameters)
 				}
 #endif
 
-			} while(err == ERR_OK);
+			} while(err == NO_ERROR);
 			//PDM_TransferAbortReceiveEDMA(DEMO_PDM, &s_pdmRxHandle_0);
 			xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
 			PRINTF("Audio task: Got EOF, looping. %u sent\r\n", sent_audio_frames);
@@ -816,7 +808,7 @@ void tcp_audio_task(void *pvParameters)
 
 	}
 }
-
+#endif
 
 
 

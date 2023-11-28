@@ -25,17 +25,10 @@
 //#include "McuWait.h"
 //#include "McuRTOS.h"
 
-/* lwIP */
-#include "lwip/opt.h"
-#include "lwip/netifapi.h"
-#include "lwip/tcpip.h"
-#include "netif/ethernet.h"
-#include "enet_ethernetif.h"
-#include "lwip/sys.h"
-#include "lwip/api.h"
-#include "lwip/timeouts.h"
-#include "lwip/tcp.h"
-#include "lwip/sockets.h"
+
+
+// ORYX
+#include "core/net.h"
 
 #include "board.h"
 #include "app_microwave.h"
@@ -593,6 +586,7 @@ void getAccelElementHistory_16BitXYZ(uint32_t numbElements,  int16_t *xyzData)		
 
 
 #define TIMEOUT_ATTEMPTS 5
+#if(0)
 int writeMsg_withTimeout(struct netconn *conn, void *dataptr, size_t size, u8_t apiflags){
 	size_t index, byteCounter, bytesToWrite, bytesWritten;
 	bytesToWrite = size;
@@ -611,18 +605,18 @@ int writeMsg_withTimeout(struct netconn *conn, void *dataptr, size_t size, u8_t 
 
 			if(bytesWritten == 0){
 				if(timeoutCtr-- == 0){
-					err = ERR_TIMEOUT;
+					err = error_tIMEOUT;
 					break;
 				}
 				vTaskDelay(5 / portTICK_PERIOD_MS );
-				err = ERR_OK;	// we can deal with this error.
+				err = NO_ERROR;	// we can deal with this error.
 			}
 			if(err == ERR_WOULDBLOCK){
 				if(timeoutCtr-- == 0){
 					break;
 				}
 				vTaskDelay(5 / portTICK_PERIOD_MS );
-				err = ERR_OK;	// we can deal with this error.
+				err = NO_ERROR;	// we can deal with this error.
 			}
 			if(err == ERR_RST){
 				break;			//
@@ -634,9 +628,10 @@ int writeMsg_withTimeout(struct netconn *conn, void *dataptr, size_t size, u8_t 
 
 	return err;
 }
+#endif
 
-
-int writeMsg_withTimeout_socket(const int sock, uint8_t *dataptr, size_t size)
+#if(0)
+int writeMsg_withTimeout_socket_old(const int sock, uint8_t *dataptr, size_t size)
 {
     int written;
     int timeout = TIMEOUT_ATTEMPTS;
@@ -663,12 +658,47 @@ int writeMsg_withTimeout_socket(const int sock, uint8_t *dataptr, size_t size)
             }
 
 	if(timeout == 0){
-		return ERR_TIMEOUT;  // Failed to retransmit, giving up
+		return error_tIMEOUT;  // Failed to retransmit, giving up
 	}
-	return ERR_OK;
+	return NO_ERROR;
 
 }
+#endif
 
+int writeMsg_withTimeout_socket(Socket *sock, uint8_t *dataptr, size_t size)
+{
+    int written;
+    int timeout = TIMEOUT_ATTEMPTS;
+    error_t error;
+            // send() can return less bytes than supplied length.
+            // Walk-around for robust implementation.
+
+            int to_write = size;
+            while ((to_write > 0) && (timeout >0))
+            {
+            	//written = send(sock, dataptr + (size - to_write), to_write, 0);;
+            	error = socketSend(sock, dataptr + (size - to_write), to_write, &written, 0);
+                if (written < 0) {
+
+                	xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
+    				PRINTF("Error occurred during sending: errno %d\r\n", error);
+    				xSemaphoreGive( xPrintMutex );
+
+    				vTaskDelay(5 / portTICK_PERIOD_MS );
+    				timeout--;
+    				continue;
+                }
+                to_write -= written;
+
+            }
+
+	if(timeout == 0){
+		return ERROR_TIMEOUT;  // Failed to retransmit, giving up
+	}
+	return error;
+
+}
+#if(0)
 int writeMsg_withTimeout_socketSendTo(const int sock, uint8_t *dataptr, size_t size, struct sockaddr *clientAddr )
 {
     int written;
@@ -697,12 +727,12 @@ int writeMsg_withTimeout_socketSendTo(const int sock, uint8_t *dataptr, size_t s
             }
 
 	if(timeout == 0){
-		return ERR_TIMEOUT;  // Failed to retransmit, giving up
+		return error_tIMEOUT;  // Failed to retransmit, giving up
 	}
-	return ERR_OK;
+	return NO_ERROR;
 
 }
-
+#endif
 
 
 
@@ -723,6 +753,7 @@ int writeMsg_withTimeout_socketSendTo(const int sock, uint8_t *dataptr, size_t s
 
 #define LOGGING_BUFFER_SIZE	(1460 * 10)
 void checkRGMIIStatus(void);
+#if(0)
 void logging_task(void *pvParameters)
 {
 
@@ -736,7 +767,7 @@ void logging_task(void *pvParameters)
 	uint32_t	temp32;
 
 
-	err_t err = ERR_OK;
+	error_t err = NO_ERROR;
 
 	do {
 		xTaskDelayUntil( &wakeTimer, 	1000 / portTICK_PERIOD_MS );
@@ -754,7 +785,7 @@ void logging_task(void *pvParameters)
 				errno = 0;
 
 				err = sendJack_2_3();
-				if(err == ERR_OK){
+				if(err == NO_ERROR){
 					wdog_networkActivity |= 2;
 				}
 
@@ -827,9 +858,10 @@ void logging_task(void *pvParameters)
 
 
 }
+#endif
 
 #define PORT                        10005
-
+#if(0)
 void tcp_logging_task(void *pvParameters)
 {
 	TickType_t wakeTimer = 0;
@@ -839,7 +871,7 @@ void tcp_logging_task(void *pvParameters)
 	uint8_t *tcpLoggingBuffer;
 	tcpLoggingBuffer = malloc(LOGGING_BUFFER_SIZE);
 
-	err_t err = ERR_OK;
+	error_t err = NO_ERROR;
 	uint32_t i;
 	ssize_t receiveCount, transmitCount;
 	int opt;
@@ -904,12 +936,12 @@ void tcp_logging_task(void *pvParameters)
 		}
 		opt = 1;
 		err = setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-		if(err != ERR_OK){PRINTF("Logging - socket set opt Fail\r\n");}
+		if(err != NO_ERROR){PRINTF("Logging - socket set opt Fail\r\n");}
 
 		// I'm not actually sure if we need linger turned on.  But it works.
 		const struct linger linger = {.l_onoff = 1, .l_linger = 5};
 		err = setsockopt(listen_sock, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger));
-		if(err != ERR_OK){PRINTF("socket set opt Fail\r\n");}
+		if(err != NO_ERROR){PRINTF("socket set opt Fail\r\n");}
 
 		xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
 		PRINTF("Logging Socket created!\r\n");
@@ -994,10 +1026,10 @@ void tcp_logging_task(void *pvParameters)
 					socketStatus = 1;
 				xSemaphoreGive( xLoggingMutex);
 				errno = 0;
-				err = ERR_OK;
+				err = NO_ERROR;
 				transmitCount = getQueueLength(&txBuffer);
 
-				while((transmitCount >0) && (err == ERR_OK)){
+				while((transmitCount >0) && (err == NO_ERROR)){
 					if(transmitCount > 0){
 
 						if(transmitCount > LOGGING_BUFFER_SIZE){
@@ -1008,7 +1040,7 @@ void tcp_logging_task(void *pvParameters)
 						err = writeMsg_withTimeout_socket(loggingSocketHandle, (uint8_t *)tcpLoggingBuffer, transmitCount);
 					}
 					transmitCount = getQueueLength(&txBuffer);
-					if(err == ERR_OK){
+					if(err == NO_ERROR){
 						wdog_networkActivity |= 2;
 
 					}
@@ -1048,7 +1080,7 @@ void tcp_logging_task(void *pvParameters)
 						}
 					}
 				}
-			}while(err == ERR_OK);
+			}while(err == NO_ERROR);
 			xSemaphoreTake( xLoggingMutex, (TickType_t) portMAX_DELAY);
 				socketStatus = 0;
 			xSemaphoreGive( xLoggingMutex);
@@ -1068,7 +1100,7 @@ void tcp_logging_task(void *pvParameters)
 	}
 	free(tcpLoggingBuffer);
 }
-
+#endif
 struct STR_Jack_MSG_2_3 jackMessage_2_3;
 struct STR_LOGGING_RadarElement radarQueueHistory[80];		// 2 seconds worht of data (10 targets each), at 4Hz update rate = 80 elements.
 
@@ -1155,13 +1187,13 @@ const uint8_t wavHeadder[0x2C] = {0x52, 0x49, 0x46, 0x46, 0x2C, 0x4C, 0x1D, 0x00
 								  0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0x00, 0x4C, 0x1D, 0x00
 };
 uint32_t loggingMessageSequence = 0;
-
+#if(0)
 int handleRX_2_3(uint8_t *buffer, int msgLenght);
 int handleTX_3_9(uint8_t *data, int msgLength);
 int handleRX_3_9(uint8_t *buffer, int msgLenght);
 int handleReceive(uint8_t *buffer, int msgLenght){
 
-	int err = ERR_OK;
+	int err = NO_ERROR;
 //	uint32_t	length;
 	int type;
 //	int ver;
@@ -1227,7 +1259,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 		loggingMessage.VER = 0x00010001;
 		loggingMessage.NODE = node_num;
 		loggingMessage.TIME = loggingMessageSequence++;		// TODO.  I know this isn't Time.  But it's sequence... and that's the best we're going to do for now.
-		err = ERR_OK;
+		err = NO_ERROR;
 
 //						err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(loggingMessage), (sizeof(loggingMessage)));
 		err |= addMessageToQueues_blocking((uint8_t *)&(loggingMessage), (sizeof(loggingMessage)));
@@ -1245,7 +1277,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 		loggingMessage.NODE = node_num;
 		loggingMessage.TIME = loggingMessageSequence++;		// TODO.  I know this isn't Time.  But it's sequence... and that's the best we're going to do for now.
 		loggingMessage.SUB_MSG_TYPE = 0x00000001;
-		err = ERR_OK;
+		err = NO_ERROR;
 
 
 		xSemaphoreTake( xLoggingMutex, (TickType_t) portMAX_DELAY);
@@ -1271,7 +1303,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 
 //		err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(loggingMessage), (sizeof(loggingMessage)));
 		err |= addMessageToQueues_blocking((uint8_t *)&(loggingMessage), sizeof(loggingMessage));
-		if(err != ERR_OK){
+		if(err != NO_ERROR){
 			return msgLenght;}
 
 
@@ -1279,7 +1311,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 
 //						err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(radarQueueCopy.elements[radarQueueCopy.head]), (radarQueueCopy.size - radarQueueCopy.head) * (sizeof(uint8_t)) * 3);
 		err |= addMessageToQueues_blocking(      (uint8_t *)&(radarQueueCopy.elements[radarQueueCopy.head]), (radarQueueCopy.size - radarQueueCopy.head) * (sizeof(uint8_t)) * 3);
-		if(err != ERR_OK){	return msgLenght;}
+		if(err != NO_ERROR){	return msgLenght;}
 		if(radarQueueCopy.head != 0){
 
 //							err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(radarQueueCopy.elements[0]), (radarQueueCopy.head) * (sizeof(uint8_t)) * 3);
@@ -1290,7 +1322,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 
 //						err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(pirQueueCopy.elements[0][pirQueueCopy.head]), (pirQueueCopy.size - pirQueueCopy.head) * (sizeof(uint8_t)) );
 		err |= addMessageToQueues_blocking(		 (uint8_t *)&(pirQueueCopy.elements[0][pirQueueCopy.head]), (pirQueueCopy.size - pirQueueCopy.head) * (sizeof(uint8_t)) );
-		if(err != ERR_OK){	return msgLenght;}
+		if(err != NO_ERROR){	return msgLenght;}
 		if(pirQueueCopy.head != 0){
 
 //							err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(pirQueueCopy.elements[0][0]), (pirQueueCopy.head) * (sizeof(uint8_t)));
@@ -1300,7 +1332,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 
 //						err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(pirQueueCopy.elements[1][pirQueueCopy.head]), (pirQueueCopy.size - pirQueueCopy.head) * (sizeof(uint8_t)));
 		err |= addMessageToQueues_blocking(		 (uint8_t *)&(pirQueueCopy.elements[1][pirQueueCopy.head]), (pirQueueCopy.size - pirQueueCopy.head) * (sizeof(uint8_t)));
-		if(err != ERR_OK){	return msgLenght;}
+		if(err != NO_ERROR){	return msgLenght;}
 		if(pirQueueCopy.head != 0){
 
 		//	err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(pirQueueCopy.elements[1][0]), (pirQueueCopy.head) * (sizeof(uint8_t)));
@@ -1341,7 +1373,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 // Camera
 
 		err |= addMessageToQueues_blocking(      (uint8_t *)&(cameraQueueCopy.elements[cameraQueueCopy.head]), (cameraQueueCopy.size - cameraQueueCopy.head) * (sizeof(struct STR_Jack_CameraTarget)));
-		if(err != ERR_OK){	return msgLenght;}
+		if(err != NO_ERROR){	return msgLenght;}
 		if(cameraQueueCopy.head != 0){
 
 			err |= addMessageToQueues_blocking((uint8_t *)&(cameraQueueCopy.elements[0]), (cameraQueueCopy.head) * (sizeof(struct STR_Jack_CameraTarget)));
@@ -1349,7 +1381,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 		}
 
 
-		if(err == ERR_OK)
+		if(err == NO_ERROR)
 		{
 //							xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
 //							PRINTF("Logging task: Sent Data.  \r\n");
@@ -1374,7 +1406,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 		loggingMessage.NODE = node_num;
 		loggingMessage.TIME = loggingMessageSequence++;		// TODO.  I know this isn't Time.  But it's sequence... and that's the best we're going to do for now.
 		loggingMessage.SUB_MSG_TYPE = 0x00000002;
-		err = ERR_OK;
+		err = NO_ERROR;
 
 		xSemaphoreTake( xLoggingMutex, (TickType_t) portMAX_DELAY);
 		memcpy(&videoQueueCopy, &videoQueue, (sizeof(videoQueueCopy)));
@@ -1386,7 +1418,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 // write the headder
 //						err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(loggingMessage), (sizeof(loggingMessage)));
 		err |= addMessageToQueues_blocking(		 (uint8_t *)&(loggingMessage), (sizeof(loggingMessage)));
-		if(err != ERR_OK){return msgLenght;}
+		if(err != NO_ERROR){return msgLenght;}
 
 // write the elements (in order)
 		i = videoQueueCopy.head;
@@ -1428,14 +1460,14 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 //				}
 
 				err |= addMessageToQueues_blocking(	(msgBufferPtr), imageSize);
-//				if(err != ERR_OK){	break;}
+//				if(err != NO_ERROR){	break;}
 //			//	vTaskDelay(5);
 //			}
-			if(err != ERR_OK){
+			if(err != NO_ERROR){
 				break;}
 		}while(videoQueueCopy.head != i);
 
-		if(err == ERR_OK){
+		if(err == NO_ERROR){
 //							xSemaphoreTake( xPrintMutex, ( TickType_t ) portMAX_DELAY );
 //							PRINTF("Logging task: Sent Images. total size: %u \r\n", loggingMessage.LEN);
 //							xSemaphoreGive(xPrintMutex);
@@ -1462,7 +1494,7 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 		loggingMessage.NODE = node_num;
 		loggingMessage.TIME = loggingMessageSequence++;		// TODO.  I know this isn't Time.  But it's sequence... and that's the best we're going to do for now.
 		loggingMessage.SUB_MSG_TYPE = 0x00000003;
-		err = ERR_OK;
+		err = NO_ERROR;
 
 		xSemaphoreTake( xLoggingMutex, (TickType_t) portMAX_DELAY);
 		memcpy(&audioQueueCopy, &audioQueue, (sizeof(audioQueueCopy)));
@@ -1478,17 +1510,17 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 
 //						err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(loggingMessage), (sizeof(loggingMessage)));
 		err |= addMessageToQueues_blocking(		 (uint8_t *)&(loggingMessage), (sizeof(loggingMessage)));
-		if(err != ERR_OK){	return msgLenght;	}
+		if(err != NO_ERROR){	return msgLenght;	}
 
 		i = sizeof(audioQueueCopy.elements);
 
 //						err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(i), (sizeof(i)));
 		err |= addMessageToQueues_blocking(		 (uint8_t *)&(i), (sizeof(i)));
-		if(err != ERR_OK){	return msgLenght;}
+		if(err != NO_ERROR){	return msgLenght;}
 
 //						err |= writeMsg_withTimeout_socket(sock, (uint8_t *)&(wavHeadder), (sizeof(wavHeadder)));
 		err |= addMessageToQueues_blocking(		 (uint8_t *)&(wavHeadder), (sizeof(wavHeadder)));
-		if(err != ERR_OK){	return msgLenght;}
+		if(err != NO_ERROR){	return msgLenght;}
 
 // write the elements (in order)
 			// write [head] to the end.
@@ -1518,12 +1550,12 @@ int handleRX_2_3(uint8_t *buffer, int msgLenght){
 				err |= addMessageToQueues_blocking(		 (uint8_t *)(wavFileAudioBuffer), byteCounter );
 				totalByteCounter += byteCounter ;
 				byteCounter = 0;
-				if(err != ERR_OK){	break;}
+				if(err != NO_ERROR){	break;}
 				if((j+i) == audioQueueCopy.head){break;}
 			}
 			free(wavFileAudioBuffer);
 		}
-		if(err != ERR_OK){	return msgLenght;}
+		if(err != NO_ERROR){	return msgLenght;}
 
 
 #endif
@@ -1542,4 +1574,4 @@ return msgLenght;
 }
 
 
-
+#endif

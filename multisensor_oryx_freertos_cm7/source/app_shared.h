@@ -8,13 +8,17 @@
 #ifndef APP_SHARED_H_
 #define APP_SHARED_H_
 
-#include "lwip/opt.h"
+//#include "lwip/opt.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <ctype.h>
 #include <math.h>
+#include "FreeRTOS.h"
+
+#include "core/net.h"
+#include "debug.h"
 #include "task.h"
 #include "event_groups.h"
 #include "timers.h"
@@ -22,8 +26,9 @@
 #include "node_identity.h"
 #include "cr_section_macros.h"
 #include "app_audio.h"
+#include "fsl_debug_console.h"
 
-#include "FreeRTOS.h"
+
 //#define I2C_RETRY_TIMES 10		// define this so that our I2C ports don't hang when we pause at a breakpoint.
 #include "fsl_lpi2c.h"
 #include "MMA8451.h"

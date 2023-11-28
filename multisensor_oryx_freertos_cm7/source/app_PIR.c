@@ -33,16 +33,6 @@
 //#include "McuWait.h"
 //#include "McuRTOS.h"
 
-/* lwIP */
-#include "lwip/opt.h"
-#include "lwip/netifapi.h"
-#include "lwip/tcpip.h"
-#include "netif/ethernet.h"
-#include "enet_ethernetif.h"
-#include "lwip/sys.h"
-#include "lwip/api.h"
-#include "lwip/timeouts.h"
-
 #include "board.h"
 #include "peripherals.h"
 #include "app_microwave.h"
@@ -491,7 +481,7 @@ void ADC_polling_task(void *pvParameters){
 	uint8_t		tempPIRResult_8Bit[2];
 	uint32_t pirPrescaller_mS = 0;
 	int32_t pir1data, pir2data;
-	int32_t pirError = ERR_OK;
+	int32_t pirError = NO_ERROR;
 	struct STR_PIRConfig *pirConfigPtr;
 	float powerStateTimer_mS = 0;
 	power_flags = 0;
@@ -615,7 +605,7 @@ void ADC_polling_task(void *pvParameters){
 
 			if(pirPrescaller_mS >= 40){
 				pirPrescaller_mS -= 40;
-				pirError = ERR_OK;
+				pirError = NO_ERROR;
 				// begin sampling.
 				pirError = getPYD1598Data(&pir1data, &pir2data);
 
@@ -659,12 +649,12 @@ void ADC_polling_task(void *pvParameters){
 
 				if(pirError > 0){
 					// pir was reset.  Handle this with a warning, perhaps.  but the error itself is cleared now and we can carry on.
-					pirError = ERR_OK;
+					pirError = NO_ERROR;
 				}
 				if(pirError <0){
 					// this is an error in reading.  Run Setup again.
 					PYD1598Setup();
-					pirError = ERR_OK;
+					pirError = NO_ERROR;
 					pir1data = pir2data = 0;
 				}
 

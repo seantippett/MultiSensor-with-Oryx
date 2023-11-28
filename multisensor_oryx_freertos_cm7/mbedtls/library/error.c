@@ -870,11 +870,11 @@ const char * mbedtls_low_level_strerr( int error_code )
 #endif /* MBEDTLS_SHA512_C */
 
 #if defined(MBEDTLS_THREADING_C)
-        case -(MBEDTLS_ERR_THREADING_FEATURE_UNAVAILABLE):
+        case -(MBEDTLS_error_tHREADING_FEATURE_UNAVAILABLE):
             return( "THREADING - The selected feature is not available" );
-        case -(MBEDTLS_ERR_THREADING_BAD_INPUT_DATA):
+        case -(MBEDTLS_error_tHREADING_BAD_INPUT_DATA):
             return( "THREADING - Bad input parameters to function" );
-        case -(MBEDTLS_ERR_THREADING_MUTEX_ERROR):
+        case -(MBEDTLS_error_tHREADING_MUTEX_ERROR):
             return( "THREADING - Locking / unlocking / free failed with error code" );
 #endif /* MBEDTLS_THREADING_C */
 

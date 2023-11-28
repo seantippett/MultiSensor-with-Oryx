@@ -188,7 +188,7 @@ int mbedtls_ssl_cookie_write( void *p_ctx,
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &ctx->mutex ) != 0 )
         return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_SSL_INTERNAL_ERROR,
-                MBEDTLS_ERR_THREADING_MUTEX_ERROR ) );
+                MBEDTLS_error_tHREADING_MUTEX_ERROR ) );
 #endif
 
     return( ret );
@@ -226,7 +226,7 @@ int mbedtls_ssl_cookie_check( void *p_ctx,
 #if defined(MBEDTLS_THREADING_C)
     if( mbedtls_mutex_unlock( &ctx->mutex ) != 0 )
         return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_SSL_INTERNAL_ERROR,
-                MBEDTLS_ERR_THREADING_MUTEX_ERROR ) );
+                MBEDTLS_error_tHREADING_MUTEX_ERROR ) );
 #endif
 
     if( ret != 0 )
