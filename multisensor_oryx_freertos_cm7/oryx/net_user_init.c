@@ -73,6 +73,8 @@ YarrowContext yarrowContext;
 TlsCache *tlsCache;
 uint8_t seed[32];
 
+NetInterface *interface;
+
 
 /**
  * @brief MII/RMII/RGMII GPIO configuration
@@ -288,7 +290,7 @@ void netUserInit(void)
 {
    error_t error;
    uint_t i;
-   NetInterface *interface;
+
    MacAddr macAddr;
 #if (APP_USE_DHCP_CLIENT == DISABLED)
    Ipv4Addr ipv4Addr;

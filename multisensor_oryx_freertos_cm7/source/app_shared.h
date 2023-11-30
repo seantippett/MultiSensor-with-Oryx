@@ -328,6 +328,8 @@ extern uint32_t wdog_networkActivity;		// used to flag that there's network acti
 extern uint32_t power_flags;
 extern uint32_t diagnostic_flags;
 extern float processorTemperature, processorTemperatureMin, processorTemperatureMax;
+
+extern NetInterface *interface;
 /*******************************************************************************
  * Functions
  ******************************************************************************/

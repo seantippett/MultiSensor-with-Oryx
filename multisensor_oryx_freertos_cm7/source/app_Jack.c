@@ -34,6 +34,7 @@
 #include "rng/yarrow.h"
 #include "resource_manager.h"
 #include "debug.h"
+#include "drivers/switch/ksz9563_driver.h"
 
 #include "board.h"
 #include "app_microwave.h"
@@ -334,8 +335,8 @@ void refreshDiagnosticFlags(void){
 	diagnostic_flags ^= (-getCameraError() ^ diagnostic_flags) & JACK_DIAG_STATUS_CAMFAULT_MASK;
 	diagnostic_flags ^= (-cameraOffline_flag ^ diagnostic_flags) & JACK_DIAG_STATUS_CAMOFFLINE_MASK;
 
-	networkFail_flags ^= (-getLinkSideStatus(0) ^ networkFail_flags) & JACK_DIAG_NETWORK_SIDEAFAIL_MASK; // side A
-	networkFail_flags ^= (-getLinkSideStatus(1) ^ networkFail_flags) & JACK_DIAG_NETWORK_SIDEBFAIL_MASK; // side B
+	networkFail_flags ^= (-(interface->switchDriver->getLinkState(interface, KSZ9563_PORT1)) ^ networkFail_flags) & JACK_DIAG_NETWORK_SIDEAFAIL_MASK; // side A
+	networkFail_flags ^= (-(interface->switchDriver->getLinkState(interface, KSZ9563_PORT2)) ^ networkFail_flags) & JACK_DIAG_NETWORK_SIDEBFAIL_MASK; // side B
 
 }
 
@@ -897,8 +898,8 @@ error_t handle_diagnostics_req(jack_header_t *reqHeader, uint8_t* rcvBuf){
 //			diagnostic_flags ^= (-getCameraError() ^ diagnostic_flags) & JACK_DIAG_STATUS_CAMFAULT_MASK;
 //			diagnostic_flags ^= (-cameraOffline_flag ^ diagnostic_flags) & JACK_DIAG_STATUS_CAMOFFLINE_MASK;
 
-			networkFail_flags ^= (-getLinkSideStatus(0) ^ networkFail_flags) & JACK_DIAG_NETWORK_SIDEAFAIL_MASK; // side A
-			networkFail_flags ^= (-getLinkSideStatus(1) ^ networkFail_flags) & JACK_DIAG_NETWORK_SIDEBFAIL_MASK; // side B
+		networkFail_flags ^= (-(interface->switchDriver->getLinkState(interface, KSZ9563_PORT1)) ^ networkFail_flags) & JACK_DIAG_NETWORK_SIDEAFAIL_MASK; // side A
+		networkFail_flags ^= (-(interface->switchDriver->getLinkState(interface, KSZ9563_PORT2)) ^ networkFail_flags) & JACK_DIAG_NETWORK_SIDEBFAIL_MASK; // side B
 
 			message.SUBTYPE = request.requestSubtype;
 			message.diagnosticStatusFlags = diagnostic_flags;
@@ -1568,7 +1569,7 @@ void jackServerTask(void *param)
       TRACE_INFO("\r\n\r\n");
       TRACE_INFO("Waiting for an incoming Jack connection...\r\n\r\n");
 
-      //Limit the number of simultaneous connections to the HTTP server
+      //Limit the number of simultaneous connections to the Jack server
       osWaitForSemaphore(&connectionSemaphore, INFINITE_DELAY);
 
       //Accept an incoming connection
@@ -1582,7 +1583,7 @@ void jackServerTask(void *param)
             counter, ipAddrToString(&clientIpAddr, NULL), clientPort);
 
          //Create a task to service the client connection
-         status = xTaskCreate(jackClientTask, "Jack Client", 800, clientSocket,
+         status = xTaskCreate(jackClientTask, "Jack Client", 1600, clientSocket,
             tskIDLE_PRIORITY + 1, &handle);
 
          //Did we encounter an error?
@@ -1864,7 +1865,7 @@ void jackClientTask(void *param)
 
 
 				if (local_err != NO_ERROR) {
-					PRINTF("Jack Server Task: error on Receive (err=%d)\r\n", local_err);
+					PRINTF("Jack Client Task: error on Receive (err=%d)\r\n", local_err);
 					//					continue;		// TODO handle this
 					break;	// handled!
 				}
